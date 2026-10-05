@@ -16,14 +16,7 @@ router.post('/login', async (request, response, next) => {
     }
 
     const result = await pool.query(
-      `SELECT
-        id_usuario,
-        nombre,
-        apellido_paterno,
-        apellido_materno,
-        correo,
-        password,
-        rol
+      `SELECT *
        FROM public.usuarios
        WHERE LOWER(TRIM(correo)) = LOWER(TRIM($1))
        LIMIT 1`,
@@ -38,19 +31,21 @@ router.post('/login', async (request, response, next) => {
       });
     }
 
+    const storedPassword = user.contrasena ?? user.password;
+    const passwordColumn = Object.prototype.hasOwnProperty.call(user, 'contrasena') ? 'contrasena' : 'password';
     let passwordValid = false;
 
-    if (user.password?.startsWith('$2')) {
-      passwordValid = await bcrypt.compare(contrasena, user.password);
+    if (storedPassword?.startsWith('$2')) {
+      passwordValid = await bcrypt.compare(contrasena, storedPassword);
     } else {
-      passwordValid = user.password === contrasena;
+      passwordValid = storedPassword === contrasena;
 
-      if (passwordValid) {
+      if (passwordValid && storedPassword !== null && storedPassword !== undefined) {
         const passwordHash = await bcrypt.hash(contrasena, 12);
 
         await pool.query(
           `UPDATE public.usuarios
-           SET password = $1
+           SET ${passwordColumn} = $1
            WHERE id_usuario = $2`,
           [passwordHash, user.id_usuario]
         );
@@ -63,11 +58,14 @@ router.post('/login', async (request, response, next) => {
       });
     }
 
-    const rol = user.rol === 'admin'
+    const storedRole = user.rol ?? 'cliente';
+    const rol = ['admin', 'administrador'].includes(storedRole)
       ? 'administrador'
-      : user.rol;
+      : ['agente', 'vendedor'].includes(storedRole)
+        ? 'vendedor'
+        : storedRole;
 
-    const apellido = [
+    const apellido = user.apellido ?? [
       user.apellido_paterno,
       user.apellido_materno,
     ].filter(Boolean).join(' ');

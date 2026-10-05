@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Propiedades disponibles y contacto de Bienes y Negocios Renato">
+  <title>Propiedades | Bienes y Negocios Renato</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="estilo/style.css?v=3">
+</head>
+<body class="portal-page">
+  <header class="portal-header">
+    <a class="portal-brand" href="/" aria-label="Bienes y Negocios Renato"><img src="estilo/logo-renato.svg" alt="Bienes y Negocios Renato"></a>
+    <a class="outline-button" href="/">Acceso de equipo</a>
+  </header>
+  <main class="portal-main">
+    <section class="portal-intro">
+      <p class="eyebrow">Inventario disponible</p>
+      <h1>Encuentra tu próximo espacio.</h1>
+      <p>Consulta propiedades vigentes y cuéntanos qué estás buscando.</p>
+    </section>
+    <section class="portal-search" aria-label="Filtros de propiedades">
+      <label>Buscar por ubicación<input id="portal-search" type="search" placeholder="Ciudad, colonia o propiedad"></label>
+      <label>Operación<select id="portal-operation"><option value="">Todas</option><option value="VENTA">Venta</option><option value="RENTA">Renta</option></select></label>
+    </section>
+    <p id="portal-status" class="portal-status" role="status"></p>
+    <section id="portal-properties" class="portal-grid" aria-live="polite"></section>
+    <section class="portal-contact">
+      <div><p class="eyebrow">Atención personalizada</p><h2>¿No encontraste lo que buscas?</h2><p>Registra tus preferencias y un asesor se pondrá en contacto contigo.</p></div>
+      <form id="lead-form" class="portal-form">
+        <label>Nombre<input name="nombre" required autocomplete="name"></label>
+        <label>Correo<input name="correo" type="email" autocomplete="email"></label>
+        <label>Teléfono<input name="telefono" type="tel" autocomplete="tel"></label>
+        <label>Ciudad<input name="ciudad"></label>
+        <div class="portal-form-row"><label>Presupuesto mínimo<input name="precio_min" type="number" min="0"></label><label>Presupuesto máximo<input name="precio_max" type="number" min="0"></label></div>
+        <label class="portal-consent"><input name="consentimiento_datos" type="checkbox" required><span>Autorizo el uso de mis datos para recibir seguimiento.</span></label>
+        <p id="lead-result" class="form-error" role="status"></p>
+        <button class="primary-button" type="submit">Enviar solicitud</button>
+      </form>
+    </section>
+  </main>
+  <script src="js/cruds/portal.js?v=2"></script>
+</body>
+</html>

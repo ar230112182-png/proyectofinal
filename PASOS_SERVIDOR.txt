@@ -1,0 +1,99 @@
+PASOS REALIZADOS PARA INICIAR EL SERVIDOR
+=========================================
+
+1. Revision del proyecto
+------------------------
+- Revise la configuracion de Node.js y confirme que el comando de inicio
+  configurado es "npm start", que ejecuta server/app.js.
+- Revise server/app.js y confirme que el puerto se configura desde PORT.
+- Revise el archivo .env local y confirme que la aplicacion esta configurada
+  para usar el puerto 3007 y una base de datos PostgreSQL local.
+- No copie ni incluya contrasenas o claves del archivo .env en este documento.
+- Revise server/db.js y confirme que la aplicacion usa un pool de conexiones
+  a PostgreSQL.
+- Revise el estado de los servicios de Windows y confirme que PostgreSQL esta
+  instalado como servicio. En esta computadora, el servicio encontrado es
+  postgresql-x64-18 y tiene inicio automatico.
+- Revise los procesos y el puerto 3007. El problema se produce cuando no hay
+  un proceso Node escuchando en ese puerto: el navegador entonces muestra
+  ERR_CONNECTION_REFUSED.
+
+2. Causa del problema
+---------------------
+PostgreSQL y el servidor de la pagina son dos procesos distintos. Aunque
+PostgreSQL este iniciado, eso no inicia automaticamente la aplicacion Node.
+Al cerrar VS Code o la terminal donde se ejecuta Node, tambien se detiene el
+servidor web. En ese momento http://localhost:3007/ deja de responder.
+
+3. Cambios realizados
+---------------------
+
+A. Archivo iniciar.bat
+
+- Cree iniciar.bat para iniciar la aplicacion desde el Explorador de archivos
+  de Windows, sin tener que abrir VS Code.
+- El archivo cambia a la carpeta del proyecto antes de ejecutar comandos.
+- Comprueba que exista el archivo .env.
+- Comprueba que Node.js, npm y las dependencias de la aplicacion esten
+  disponibles; si falta algo, muestra instrucciones en pantalla.
+- Busca los servicios instalados de PostgreSQL e intenta iniciar los que
+  esten detenidos.
+- Comprueba primero si la aplicacion ya esta respondiendo en el puerto 3007.
+- Si no esta respondiendo, abre una ventana de terminal independiente y
+  ejecuta npm start para mantener el servidor visible.
+- Espera hasta 60 segundos a que la aplicacion y la base de datos respondan.
+- Cuando estan listos, abre http://localhost:3007/ en el navegador.
+- Si no logra iniciar el servidor, indica que se revise la ventana de
+  terminal del servidor para encontrar el error.
+
+B. Comprobacion de salud en server/app.js
+
+- Cambie la ruta /api/health para que no confirme solamente que Node esta
+  funcionando.
+- Ahora ejecuta SELECT 1 contra PostgreSQL.
+- Si la conexion funciona, responde que la base de datos esta conectada.
+- Si falla la conexion, responde con estado HTTP 503 y registra el error en
+  la terminal. Asi el iniciador no abre la pagina antes de que PostgreSQL
+  este disponible.
+
+C. Guia INICIAR.md
+
+- Cree una guia con instrucciones para iniciar la aplicacion y que hacer si
+  falta Node.js, npm, alguna dependencia o permiso para iniciar PostgreSQL.
+
+4. Pruebas realizadas
+---------------------
+- Ejecute iniciar.bat en esta computadora.
+- Confirme que el iniciador encontro PostgreSQL e inicio npm start.
+- Confirme que la ruta http://localhost:3007/api/health respondio HTTP 200 y
+  reporto "database":"connected".
+- Confirme que http://localhost:3007/ respondio HTTP 200 y entrego la pagina.
+- Confirme que existe un proceso escuchando en el puerto 3007.
+- Revise los errores del archivo server/app.js y no se encontraron errores.
+- Ejecute git diff --check y no encontro errores de espacios en los cambios.
+
+5. Pasos para iniciar la aplicacion en adelante
+-----------------------------------------------
+1. Abre la carpeta del proyecto en el Explorador de archivos.
+2. Haz doble clic en iniciar.bat.
+3. Si Windows solicita permiso para iniciar PostgreSQL, acepta la solicitud.
+   Si no tienes permiso, pide al administrador que inicie el servicio
+   postgresql.
+4. Espera el mensaje que indica que el servidor y PostgreSQL estan listos.
+   El iniciador abrira http://localhost:3007/ automaticamente.
+5. Deja abierta la ventana "Bienes y Raises - servidor" mientras uses la
+   pagina. Si la cierras, el servidor Node se detiene.
+6. Si vuelves a ver ERR_CONNECTION_REFUSED, ejecuta iniciar.bat otra vez.
+
+6. Si el inicio falla
+---------------------
+- Revisa el mensaje y los errores en la ventana "Bienes y Raises - servidor".
+- Si indica que faltan dependencias, abre una terminal en la carpeta del
+  proyecto, ejecuta npm install y vuelve a ejecutar iniciar.bat.
+- Si indica que no se pudo iniciar PostgreSQL, confirma que PostgreSQL este
+  instalado y que tu cuenta de Windows tenga permiso para iniciarlo.
+- Si la aplicacion no responde despues de esperar, confirma que exista el
+  archivo .env en la carpeta del proyecto y revisa que DATABASE_URL apunte a
+  la base de datos local correcta.
+- No publiques ni compartas el contenido privado de .env; puede incluir
+  claves y contrasenas.

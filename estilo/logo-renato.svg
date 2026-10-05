@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 104" role="img" aria-labelledby="title">
+  <title id="title">Bienes y Negocios Renato</title>
+  <rect x="4" y="8" width="88" height="88" rx="25" fill="#193b3a"/>
+  <path d="M20 48 48 25l28 23v31H58V59H38v20H20z" fill="#f4f8f5"/>
+  <path d="M16 47 48 20l32 27" fill="none" stroke="#ef856f" stroke-linecap="round" stroke-linejoin="round" stroke-width="6"/>
+  <text x="112" y="48" fill="#193b3a" font-family="Arial, sans-serif" font-size="28" font-weight="700" letter-spacing=".2">BIENES Y NEGOCIOS</text>
+  <text x="112" y="80" fill="#ef856f" font-family="Arial, sans-serif" font-size="28" font-weight="700" letter-spacing="2">RENATO</text>
+</svg>

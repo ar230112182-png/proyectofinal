@@ -20,7 +20,12 @@ function requireAuth(request, response, next) {
 
 function requireRole(...roles) {
   return (request, response, next) => {
-    if (!roles.includes(request.user.rol)) {
+    const normalizeRole = (role) => {
+      if (role === 'admin') return 'administrador';
+      if (role === 'agente') return 'vendedor';
+      return role;
+    };
+    if (!roles.map(normalizeRole).includes(normalizeRole(request.user.rol))) {
       return response.status(403).json({ error: 'No tienes permisos para esta operacion.' });
     }
     return next();
