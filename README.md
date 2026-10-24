@@ -330,3 +330,7 @@ relacionados. En esos casos usa **Cambiar estado** y selecciona **Inactivo**.
 
 Este repositorio no declara una licencia de código abierto. No redistribuyas
 el código sin autorización de sus propietarios.
+
+
+
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
