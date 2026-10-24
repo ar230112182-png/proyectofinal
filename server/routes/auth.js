@@ -31,6 +31,12 @@ router.post('/login', async (request, response, next) => {
       });
     }
 
+    if (user.activo === false) {
+      return response.status(403).json({
+        error: 'Esta cuenta esta inactiva. Solicita a un administrador que la active.',
+      });
+    }
+
     const storedPassword = user.contrasena ?? user.password;
     const passwordColumn = Object.prototype.hasOwnProperty.call(user, 'contrasena') ? 'contrasena' : 'password';
     let passwordValid = false;

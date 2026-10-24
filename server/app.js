@@ -9,7 +9,8 @@ const propertyRoutes = require('./routes/properties');
 const workflowRoutes = require('./routes/workflows');
 
 const app = express();
-const port = Number(process.env.PORT || 3000);
+const port = Number(process.env.PORT || 3007);
+const host = process.env.HOST || '0.0.0.0';
 
 if (!process.env.DATABASE_URL || !process.env.JWT_SECRET) {
   console.warn('Faltan DATABASE_URL o JWT_SECRET. Copia .env.example a .env antes de iniciar.');
@@ -44,6 +45,7 @@ app.use((error, _request, response, _next) => {
   response.status(500).json({ error: 'Error interno del servidor.' });
 });
 
-app.listen(port, () => {
-  console.log(`Habita disponible en http://localhost:${port}`);
+app.listen(port, host, () => {
+  console.log(`Bienes y Negocios Renato disponible en http://localhost:${port}`);
+  console.log(`Acceso desde la red local: http://<IP-DE-ESTE-EQUIPO>:${port}`);
 });

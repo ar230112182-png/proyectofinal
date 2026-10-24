@@ -6,6 +6,10 @@ const api = {
     if (this.token) headers.Authorization = `Bearer ${this.token}`;
     const response = await fetch(url, { ...options, headers });
     const payload = response.status === 204 ? null : await response.json();
+    if (response.status === 401) {
+      this.logout();
+      showLogin();
+    }
     if (!response.ok) throw new Error(payload?.error || 'No se pudo completar la solicitud.');
     return payload;
   },
@@ -44,34 +48,69 @@ const api = {
 
 window.habitaApi = api;
 
+function isCurrentUserAdmin() {
+  try {
+    const user = JSON.parse(localStorage.getItem('habita_user') || '{}');
+    return ['administrador', 'admin'].includes(String(user.rol || user.role || '').toLowerCase());
+  } catch { return false; }
+}
+window.isCurrentUserAdmin = isCurrentUserAdmin;
+
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>\'"]/g, (character) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;',
 }[character]));
 const formatMoney = (value) => Number(value || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 });
 const optionData = { clients: [], properties: [], users: [], categories: [], leads: [], rentals: [] };
-const records = {};
+const records = {
+  properties: [], clients: [], leads: [], visits: [], matches: [], documents: [], offers: [],
+  sales: [], commissions: [], rentals: [], payments: [], contracts: [], sellers: [], reports: [],
+  users: [], activity: [],
+};
+const reportDateFilter = { from: '', to: '' };
+const propertyFilters = { search: '', category: '' };
+const recordFilters = {};
+
+const dateFieldByResource = {
+  properties: 'fecha_publicacion',
+  clients: 'fecha_registro',
+  leads: 'creado_en',
+  offers: 'creado_en',
+  visits: 'fecha_cita',
+  matches: 'creada_en',
+  documents: 'creado_en',
+  sales: 'fecha_venta',
+  commissions: 'creado_en',
+  rentals: 'fecha_inicio',
+  payments: 'pagado_en',
+  contracts: 'fecha_contrato',
+  users: 'fecha_registro',
+  reports: 'fecha',
+};
 
 const tableConfig = {
-  properties: { title: 'Propiedades registradas', columns: [['titulo', 'Propiedad'], ['categoria', 'Categoría'], ['tipo_operacion', 'Operación'], ['precio', 'Precio'], ['estado_propiedad', 'Estado']], actions: ['edit', 'archive'] },
-  clients: { title: 'Clientes', columns: [['nombre', 'Nombre'], ['apellido_paterno', 'Apellido'], ['correo', 'Correo'], ['telefono', 'Teléfono'], ['ciudad', 'Ciudad']] },
-  leads: { title: 'Prospectos', columns: [['nombre', 'Prospecto'], ['correo', 'Correo'], ['telefono', 'Teléfono'], ['origen', 'Origen'], ['estado', 'Estado']], actions: ['status'] },
+  properties: { title: 'Propiedades registradas', columns: [['id_propiedad', 'ID'], ['titulo', 'Propiedad'], ['categoria', 'Categoría'], ['tipo_operacion', 'Operación'], ['precio', 'Precio'], ['estado_propiedad', 'Estado']], actions: ['edit', 'delete', 'map'] },
+  clients: { title: 'Clientes', columns: [['nombre', 'Nombre'], ['apellido_paterno', 'Apellido'], ['correo', 'Correo'], ['telefono', 'Teléfono'], ['ciudad', 'Ciudad'], ['activo', 'Estado'], ['fecha_registro', 'Fecha de registro']], actions: ['status'] },
+  leads: { title: 'Prospectos', columns: [['nombre', 'Prospecto'], ['correo', 'Correo'], ['telefono', 'Teléfono'], ['origen', 'Origen'], ['estado', 'Estado'], ['creado_en', 'Fecha de registro']], actions: ['status'] },
   visits: { title: 'Agenda de visitas', columns: [['fecha_cita', 'Fecha'], ['cliente', 'Cliente'], ['propiedad', 'Propiedad'], ['agente', 'Agente'], ['estado', 'Estado']], actions: ['status'] },
   matches: { title: 'Coincidencias guardadas', columns: [['lead', 'Prospecto'], ['propiedad', 'Propiedad'], ['puntuacion', 'Puntuación'], ['creada_en', 'Fecha']] },
   documents: { title: 'Expedientes y resguardos', columns: [['nombre_archivo', 'Documento'], ['tipo', 'Tipo'], ['estado', 'Estado'], ['tamano_bytes', 'Tamaño'], ['creado_en', 'Fecha']], actions: ['download'] },
   offers: { title: 'Ofertas', columns: [['propiedad', 'Propiedad'], ['cliente', 'Usuario'], ['monto', 'Monto'], ['tipo', 'Tipo'], ['estado', 'Estado']], actions: ['status'] },
   sales: { title: 'Ventas cerradas', columns: [['propiedad', 'Propiedad'], ['cliente', 'Cliente'], ['precio_venta', 'Precio'], ['fecha_venta', 'Fecha']] },
-  commissions: { title: 'Comisiones', columns: [['propiedad', 'Propiedad'], ['porcentaje_agencia', '% agencia'], ['monto_operacion', 'Operación'], ['monto_total', 'Comisión'], ['creado_en', 'Fecha']] },
+  commissions: { title: 'Comisiones', columns: [['propiedad', 'Propiedad'], ['porcentaje_agencia', '% agencia'], ['monto_operacion', 'Operación'], ['monto_total', 'Comisión'], ['estado', 'Pago'], ['creado_en', 'Fecha']], actions: ['status'] },
   rentals: { title: 'Contratos de renta', columns: [['propiedad', 'Propiedad'], ['cliente', 'Cliente'], ['renta_mensual', 'Renta mensual'], ['fecha_inicio', 'Inicio'], ['fecha_fin', 'Fin'], ['estado', 'Estado']], actions: ['status'] },
   payments: { title: 'Cobros de renta', columns: [['propiedad', 'Propiedad'], ['periodo', 'Periodo'], ['monto', 'Monto'], ['estado', 'Estado'], ['pagado_en', 'Pagado']] , actions: ['status'] },
   contracts: { title: 'Contratos registrados', columns: [['tipo_operacion', 'Operación'], ['cliente', 'Cliente'], ['vendedor', 'Vendedor'], ['propiedad', 'Lote'], ['precio_total', 'Precio'], ['superficie_m2', 'Superficie m²'], ['fecha_contrato', 'Fecha']], actions: ['document', 'map'] },
-  users: { title: 'Usuarios del sistema', columns: [['nombre', 'Nombre'], ['apellido_paterno', 'Apellido'], ['correo', 'Correo'], ['telefono', 'Teléfono'], ['rol', 'Rol']] },
+  sellers: { title: 'Vendedores', columns: [['nombre', 'Nombre'], ['apellido_paterno', 'Apellido'], ['correo', 'Correo'], ['telefono', 'Teléfono'], ['rol', 'Rol'], ['activo', 'Estado'], ['comision_mes', 'Comisión del mes']], actions: ['edit', 'status', 'delete'] },
+  users: { title: 'Usuarios y administradores', columns: [['nombre', 'Nombre'], ['apellido_paterno', 'Apellido'], ['correo', 'Correo'], ['telefono', 'Teléfono'], ['rol', 'Función'], ['activo', 'Estado'], ['fecha_registro', 'Fecha de registro']], actions: ['edit', 'status', 'delete'] },
+  reports: { title: 'Reportes de vendedores', columns: [['id', 'ID'], ['vendedor', 'Vendedor'], ['cobros', 'Cobros'], ['operacion', 'Operación'], ['propiedad', 'Propiedad'], ['fecha', 'Fecha'], ['actividad', 'Actividad']] },
 };
 
 const forms = {
   property: { title: 'Nueva propiedad', resource: 'properties', fields: [
-    ['titulo', 'Título', 'text', true], ['categoria', 'Categoría', 'text', true], ['tipo_operacion', 'Operación', 'select', true, ['VENTA', 'RENTA']],
+    ['titulo', 'Título', 'text', true], ['categoria', 'Categoría', 'select', true, ['Casa', 'Lote baldío']], ['tipo_operacion', 'Operación', 'select', true, ['VENTA', 'RENTA']],
     ['precio', 'Precio', 'number', true], ['descripcion', 'Descripción', 'textarea'], ['superficie', 'Superficie m²', 'number'],
     ['habitaciones', 'Habitaciones', 'number'], ['banos', 'Baños', 'number'], ['estacionamientos', 'Estacionamientos', 'number'],
+    ['imagen_url', 'Imagen de la propiedad (URL)', 'url'], ['latitud', 'Latitud de Google Maps', 'number'], ['longitud', 'Longitud de Google Maps', 'number'],
     ['calle', 'Calle', 'text', true], ['numero', 'Número', 'text'], ['colonia', 'Colonia', 'text'], ['ciudad', 'Ciudad', 'text', true], ['estado', 'Estado', 'text', true], ['codigo_postal', 'Código postal', 'text'],
   ] },
   client: { title: 'Nuevo cliente', resource: 'clients', fields: [['nombre', 'Nombre', 'text', true], ['apellido_paterno', 'Apellido paterno', 'text', true], ['apellido_materno', 'Apellido materno', 'text'], ['correo', 'Correo', 'email', true], ['telefono', 'Teléfono', 'tel'], ['curp', 'CURP', 'text'], ['direccion', 'Dirección', 'text'], ['ciudad', 'Ciudad', 'text'], ['estado', 'Estado', 'text'], ['codigo_postal', 'Código postal', 'text']] },
@@ -83,7 +122,8 @@ const forms = {
   commission: { title: 'Registrar comisión', resource: 'commissions', fields: [['id_propiedad', 'Propiedad', 'options', true, 'properties'], ['porcentaje_agencia', 'Porcentaje de agencia', 'number'], ['monto_operacion', 'Monto de operación', 'number', true], ['monto_total', 'Monto de comisión', 'number', true]] },
   rental: { title: 'Nueva renta', resource: 'rentals', fields: [['id_propiedad', 'Propiedad', 'options', true, 'properties'], ['id_cliente', 'Cliente', 'options', true, 'clients'], ['renta_mensual', 'Renta mensual', 'number', true], ['fecha_inicio', 'Fecha de inicio', 'date', true], ['fecha_fin', 'Fecha de término', 'date']] },
   payment: { title: 'Registrar cobro', resource: 'payments', fields: [['id_renta', 'Contrato de renta', 'options', true, 'rentals'], ['periodo', 'Periodo de pago', 'date', true], ['monto', 'Monto recibido', 'number', true], ['estado', 'Estado del pago', 'select', true, ['PAGADO', 'PENDIENTE']]] },
-  user: { title: 'Agregar usuario o vendedor', resource: 'users', fields: [['nombre', 'Nombre', 'text', true], ['apellido_paterno', 'Apellido paterno', 'text', true], ['apellido_materno', 'Apellido materno', 'text'], ['correo', 'Correo', 'email', true], ['telefono', 'Teléfono', 'tel'], ['password', 'Contraseña inicial (mínimo 12 caracteres)', 'password', true], ['rol', 'Rol de acceso', 'select', true, [{ id: 'vendedor', nombre: 'Vendedor' }, { id: 'administrador', nombre: 'Administrador' }]]] },
+  seller: { title: 'Agregar vendedor', resource: 'users', fields: [['nombre', 'Nombre', 'text', true], ['apellido_paterno', 'Apellido paterno', 'text', true], ['apellido_materno', 'Apellido materno', 'text'], ['correo', 'Correo', 'email', true], ['telefono', 'Teléfono', 'tel'], ['password', 'Contraseña inicial (mínimo 12 caracteres)', 'password', true], ['rol', 'Función', 'select', true, [{ id: 'vendedor', nombre: 'Vendedor' }]]] },
+  user: { title: 'Agregar usuario o administrador', resource: 'users', fields: [['nombre', 'Nombre', 'text', true], ['apellido_paterno', 'Apellido paterno', 'text', true], ['apellido_materno', 'Apellido materno', 'text'], ['correo', 'Correo', 'email', true], ['telefono', 'Teléfono', 'tel'], ['password', 'Contraseña inicial (mínimo 12 caracteres)', 'password', true], ['rol', 'Función', 'select', true, [{ id: 'usuario', nombre: 'Usuario' }, { id: 'administrador', nombre: 'Administrador' }]]] },
   contract: { title: 'Registrar cliente y contrato', resource: 'contracts', fields: [
     ['tipo_operacion', 'Tipo de operación', 'select', true, ['VENTA', 'RENTA']],
     ['id_propiedad', 'Lote / propiedad', 'options', true, 'properties'],
@@ -167,39 +207,100 @@ function openForm(kind, titleOverride) {
   dialog.querySelector('.form-error').textContent = '';
   const fields = dialog.querySelector('.workflow-fields');
   fields.replaceChildren(...config.fields.map(renderField));
+  if (kind === 'property') configurePropertyForm(form);
   if (kind === 'contract') configureContractForm(form);
   dialog.showModal();
+}
+
+function configurePropertyForm(form) {
+  const category = form.querySelector('[name="categoria"]');
+  const houseFields = ['titulo', 'habitaciones', 'banos', 'estacionamientos', 'calle', 'numero', 'colonia', 'ciudad', 'estado', 'codigo_postal'];
+  const toggleResidentialFields = () => {
+    const isVacantLot = category.value === 'Lote baldío';
+    houseFields.forEach((name) => {
+      const input = form.querySelector(`[name="${name}"]`);
+      const wrapper = input.closest('.workflow-field');
+      wrapper.hidden = isVacantLot;
+      input.disabled = isVacantLot;
+      if (isVacantLot) input.value = '';
+      input.required = !isVacantLot && ['titulo', 'calle', 'ciudad', 'estado'].includes(name);
+    });
+  };
+  category.addEventListener('change', toggleResidentialFields);
+  toggleResidentialFields();
 }
 
 function actionButtons(resource, record) {
   const actions = tableConfig[resource]?.actions || [];
   return actions.map((action) => {
-    if (action === 'document') return `<button class="text-button" data-contract-document="${escapeHtml(record.id_contrato)}">Descargar contrato</button>`;
-    if (action === 'map') return `<button class="text-button" data-contract-map="${escapeHtml(record.id_contrato)}">Google Maps</button>`;
-    if (action === 'download') return `<button class="text-button" data-download-document="${escapeHtml(record.id_documento)}">Descargar</button>`;
-    const idKey = { properties: 'id_propiedad', leads: 'id_lead', visits: 'id_cita', offers: 'id_oferta', rentals: 'id_renta', payments: 'id_pago' }[resource];
+    if (action === 'document') return `<button type="button" class="text-button" data-contract-document="${escapeHtml(record.id_contrato)}">Descargar contrato</button>`;
+    if (action === 'map') {
+      const mapAttribute = resource === 'properties' ? 'data-property-map' : 'data-contract-map';
+      const mapId = resource === 'properties' ? record.id_propiedad : record.id_contrato;
+      return `<button type="button" class="text-button" ${mapAttribute}="${escapeHtml(mapId)}">Google Maps</button>`;
+    }
+    if (action === 'download') return `<button type="button" class="text-button" data-download-document="${escapeHtml(record.id_documento)}">Descargar</button>`;
+    if (resource === 'properties' && action === 'delete') {
+      return `<button type="button" class="text-button danger-button" data-record-action="delete" data-resource="properties" data-record-id="${escapeHtml(record.id_propiedad)}">Borrar</button>`;
+    }
+    if (resource === 'sellers' && action === 'delete') {
+      return `<button type="button" class="text-button danger-button" data-record-action="delete" data-resource="sellers" data-record-id="${escapeHtml(record.id_usuario)}">Eliminar</button>`;
+    }
+    if (resource === 'users' && action === 'delete') {
+      return `<button type="button" class="text-button danger-button" data-record-action="delete" data-resource="users" data-record-id="${escapeHtml(record.id_usuario)}">Eliminar</button>`;
+    }
+    const idKey = { properties: 'id_propiedad', clients: 'id_cliente', leads: 'id_lead', visits: 'id_cita', offers: 'id_oferta', rentals: 'id_renta', payments: 'id_pago', commissions: 'id_comision', sellers: 'id_usuario', users: 'id_usuario' }[resource];
     const actionName = action === 'archive' ? 'Archivar' : action === 'edit' ? 'Editar' : 'Cambiar estado';
-    return `<button class="text-button" data-record-action="${action}" data-resource="${resource}" data-record-id="${escapeHtml(record[idKey])}">${actionName}</button>`;
+    return `<button type="button" class="text-button" data-record-action="${action}" data-resource="${resource}" data-record-id="${escapeHtml(record[idKey])}">${actionName}</button>`;
   }).join(' ');
 }
 
+function bindUserRecordActions(panel, resource) {
+  if (!['sellers', 'users'].includes(resource)) return;
+  panel.querySelectorAll('[data-record-action]').forEach((button) => {
+    button.addEventListener('click', async (event) => {
+      event.stopPropagation();
+      const { recordAction: action, recordId } = button.dataset;
+      if (action === 'edit') {
+        return resource === 'sellers' ? openSellerEdit(recordId) : openUserEdit(recordId);
+      }
+      if (action === 'status') {
+        return resource === 'sellers' ? openSellerStatus(recordId) : openUserStatus(recordId);
+      }
+      if (action !== 'delete') return;
+      const label = resource === 'sellers' ? 'vendedor' : 'usuario';
+      if (!window.confirm(`¿Eliminar este ${label}? Esta acción no se puede deshacer.`)) return;
+      try {
+        await api.request(`/api/workflows/users/${recordId}`, { method: 'DELETE' });
+        showToast(`${resource === 'sellers' ? 'Vendedor' : 'Usuario'} eliminado.`);
+        await loadWorkspace();
+      } catch (error) {
+        showToast(error.message, true);
+      }
+    });
+  });
+}
+
 function formatCell(resource, key, value, record) {
-  if (key === 'precio' || key === 'precio_total' || key === 'monto' || key === 'monto_total' || key === 'monto_operacion' || key === 'precio_venta' || key === 'renta_mensual') return escapeHtml(formatMoney(value));
+  if (key === 'precio' || key === 'precio_total' || key === 'monto' || key === 'monto_total' || key === 'monto_operacion' || key === 'precio_venta' || key === 'renta_mensual' || key === 'cobros' || key === 'comision_mes') return escapeHtml(formatMoney(value));
   if (key === 'tamano_bytes') return `${(Number(value || 0) / 1024).toFixed(1)} KB`;
   if (key === 'puntuacion') return `${escapeHtml(value)}%`;
-  if (key === 'fecha_cita' || key === 'fecha_venta' || key === 'fecha_contrato' || key === 'creado_en' || key === 'pagado_en' || key === 'fecha_inicio' || key === 'fecha_fin') {
+  if (key === 'fecha_cita' || key === 'fecha_venta' || key === 'fecha_contrato' || key === 'creado_en' || key === 'pagado_en' || key === 'fecha_inicio' || key === 'fecha_fin' || key === 'fecha') {
     return value ? escapeHtml(new Date(value).toLocaleString('es-MX')) : '—';
   }
   if (key === 'tipo_operacion') return value === 'VENTA' ? 'Venta' : value === 'RENTA' ? 'Renta' : escapeHtml(value || '—');
   if (key === 'rol') return value === 'administrador' || value === 'admin' ? 'Administrador' : value === 'vendedor' || value === 'agente' ? 'Vendedor' : escapeHtml(value || '—');
+  if (key === 'activo') return value === true || value === 'true' ? 'Activo' : 'Inactivo';
   if (resource === 'properties' && key === 'titulo') return `<strong>${escapeHtml(value)}</strong><small class="record-subtitle">${escapeHtml(record.direccion)}</small>`;
   return escapeHtml(value || '—');
 }
 
-function renderRecords(resource, viewId, data) {
+function renderRecords(resource, viewId, data = []) {
   const view = document.getElementById(viewId);
   const config = tableConfig[resource];
   if (!view || !config) return;
+  const visibleData = resource === 'reports' ? filterReportsByDate(data) : data;
+  const filterState = recordFilters[resource] || (recordFilters[resource] = { search: '', from: '', to: '' });
   let panel = view.querySelector(`[data-record-panel="${resource}"]`);
   if (!panel) {
     panel = document.createElement('section');
@@ -207,7 +308,136 @@ function renderRecords(resource, viewId, data) {
     panel.dataset.recordPanel = resource;
     view.append(panel);
   }
-  panel.innerHTML = `<div class="panel-heading"><div><h2>${config.title}</h2><p>${data.length} registros guardados</p></div></div><div class="property-table-wrap"><table class="data-table"><thead><tr>${config.columns.map(([, label]) => `<th>${label}</th>`).join('')}<th>Acciones</th></tr></thead><tbody>${data.length ? data.map((record) => `<tr>${config.columns.map(([key]) => `<td>${formatCell(resource, key, record[key], record)}</td>`).join('')}<td>${actionButtons(resource, record)}</td></tr>`).join('') : `<tr><td colspan="${config.columns.length + 1}" class="empty-records">Todavía no hay registros.</td></tr>`}</tbody></table></div>`;
+  const filterOptions = {
+    visits: ['Todas', 'Pendiente', 'Confirmada', 'Completada', 'Cancelada'],
+    rentals: ['Todas', 'Activa', 'Finalizada', 'Cancelada'],
+    commissions: ['Todas', 'PAGADA', 'PENDIENTE'],
+    reports: ['Todas', 'comprar', 'vender', 'rentar'],
+  }[resource];
+  const propertyCategories = resource === 'properties'
+    ? [...new Set(data.map((property) => property.categoria).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), 'es'))
+    : [];
+  const reportFilter = resource === 'reports' ? `
+    <div class="report-date-filter" aria-label="Filtrar reportes por fechas">
+      <label>Desde <input type="date" data-report-date="from" value="${reportDateFilter.from}"></label>
+      <label>Hasta <input type="date" data-report-date="to" value="${reportDateFilter.to}"></label>
+    </div>` : '';
+  const searchValue = panel.querySelector('[data-record-search]')?.value ?? filterState.search;
+  filterState.search = searchValue;
+  const recordSearch = resource === 'properties' ? '' : `<label class="record-search"><span>Buscar</span><input type="search" data-record-search="${resource}" placeholder="Nombre, correo o texto" value="${escapeHtml(searchValue)}" autocomplete="off"></label>`;
+  const dateField = dateFieldByResource[resource];
+  const dateFilter = dateField && resource !== 'reports' ? `<div class="record-date-filter" aria-label="Filtrar por fechas"><label>Desde <input type="date" data-record-date="from" value="${escapeHtml(filterState.from)}"></label><label>Hasta <input type="date" data-record-date="to" value="${escapeHtml(filterState.to)}"></label></div>` : '';
+  if (resource === 'properties') {
+    propertyFilters.search = panel.querySelector('[data-property-search]')?.value || propertyFilters.search;
+    propertyFilters.category = panel.querySelector('[data-property-category]')?.value || propertyFilters.category;
+  }
+  const propertySearch = resource === 'properties'
+    ? `<label class="property-search"><span>Buscar propiedad</span><input type="search" data-property-search placeholder="Nombre o ID" value="${escapeHtml(propertyFilters.search)}" autocomplete="off"></label>`
+    : '';
+  const propertyCategory = resource === 'properties'
+    ? `<label class="record-filter"><span>Categoría</span><select data-property-category><option value="">Todas</option>${propertyCategories.map((category) => `<option value="${escapeHtml(category)}"${propertyFilters.category === category ? ' selected' : ''}>${escapeHtml(category)}</option>`).join('')}</select></label>`
+    : '';
+  const filter = filterOptions ? `<label class="record-filter"><span>Filtrar</span><select data-record-filter="${resource}">${filterOptions.map((option) => `<option value="${escapeHtml(option)}">${escapeHtml(option)}</option>`).join('')}</select></label>` : '';
+  const propertyResultCount = resource === 'properties' ? ' data-property-result-count' : '';
+  const resultLabel = resource === 'properties' ? 'propiedades' : 'registros';
+  panel.innerHTML = `<div class="panel-heading"><div><h2>${config.title}</h2><p${propertyResultCount}>${visibleData.length} ${resultLabel}${resource === 'reports' && visibleData.length !== data.length ? ` de ${data.length}` : ''}</p></div><div class="panel-heading-actions">${recordSearch}${propertySearch}${propertyCategory}${dateFilter}${reportFilter}${filter}</div></div><div class="property-table-wrap"><table class="data-table"><thead><tr>${config.columns.map(([, label]) => `<th>${label}</th>`).join('')}<th>Acciones</th></tr></thead><tbody>${visibleData.length ? visibleData.map((record) => `<tr data-record-text="${escapeHtml(getRecordSearchText(record))}" data-record-date="${escapeHtml(dateField ? record[dateField] : '')}"${resource === 'properties'   ? ` data-property-title="${escapeHtml(record.titulo)}" data-property-id="${escapeHtml(record.id_propiedad)}" data-property-category="${escapeHtml(record.categoria)}"` : ''}>${config.columns.map(([key]) => `<td>${formatCell(resource, key, record[key], record)}</td>`).join('')}<td>${actionButtons(resource, record)}</td></tr>`).join('') : `<tr><td colspan="${config.columns.length + 1}" class="empty-records">No hay registros para mostrar.</td></tr>`}</tbody></table></div>`;
+  bindUserRecordActions(panel, resource);
+  if (resource === 'properties') applyPropertyFilters(panel);
+  if (resource !== 'properties') applyRecordFilters(panel, resource);
+  if (resource === 'visits') renderVisitCalendar(panel, data);
+}
+
+function getRecordSearchText(record) {
+  return Object.values(record).filter((value) => value !== null && value !== undefined).join(' ').toLocaleLowerCase();
+}
+
+function applyRecordFilters(panel, resource) {
+  if (!panel) return;
+  const state = recordFilters[resource] || (recordFilters[resource] = { search: '', from: '', to: '' });
+  const rows = [...panel.querySelectorAll('tbody tr[data-record-text]')];
+  const query = state.search.trim().toLocaleLowerCase();
+  const matches = rows.filter((row) => {
+    const date = String(row.dataset.recordDate || '').slice(0, 10);
+    const match = (!query || row.dataset.recordText.includes(query))
+      && (!state.from || date >= state.from)
+      && (!state.to || date <= state.to);
+    row.hidden = !match;
+    return match;
+  }).length;
+  const count = panel.querySelector('[data-property-result-count]') || panel.querySelector('.panel-heading p');
+  if (count) count.textContent = `${matches} registros${matches !== rows.length ? ` de ${rows.length}` : ''}`;
+}
+
+function applyPropertyFilters(panel) {
+  if (!panel) return;
+  const search = panel.querySelector('[data-property-search]');
+  const category = panel.querySelector('[data-property-category]');
+  propertyFilters.search = search?.value || '';
+  propertyFilters.category = category?.value || '';
+  const query = propertyFilters.search.trim().toLocaleLowerCase();
+  const selectedCategory = propertyFilters.category.toLocaleLowerCase();
+  const state = recordFilters.properties || (recordFilters.properties = { search: '', from: '', to: '' });
+  const rows = [...panel.querySelectorAll('tbody tr[data-property-title]')];
+  const matches = rows.filter((row) => {
+    const date = String(row.dataset.recordDate || '').slice(0, 10);
+    const match = (!query || row.dataset.propertyTitle.toLocaleLowerCase().includes(query) || row.dataset.propertyId.includes(query))
+      && (!selectedCategory || row.dataset.propertyCategory.toLocaleLowerCase() === selectedCategory)
+      && (!state.from || date >= state.from)
+      && (!state.to || date <= state.to);
+    row.hidden = !match;
+    return match;
+  }).length;
+  const count = panel.querySelector('[data-property-result-count]');
+  if (count) count.textContent = `${matches} propiedades${matches !== rows.length ? ` de ${rows.length}` : ''}`;
+  const recordSearchInput = panel.querySelector('[data-record-search]');
+  if (recordSearchInput) state.search = recordSearchInput.value;
+}
+
+function getUserSearchText(user) {
+  return [user.nombre, user.apellido_paterno, user.apellido_materno].filter(Boolean).join(' ');
+}
+
+function applyUserSearch(input) {
+  if (!input) return;
+  const panel = input.closest('.persisted-panel');
+  const query = input.value.trim().toLocaleLowerCase();
+  const rows = [...panel.querySelectorAll('tbody tr[data-user-name]')];
+  const matches = rows.filter((row) => {
+    const match = !query || row.dataset.userName.toLocaleLowerCase().includes(query);
+    row.hidden = !match;
+    return match;
+  }).length;
+  const count = panel.querySelector('[data-user-result-count]');
+  if (count) count.textContent = `${matches} resultados${query ? ` de ${rows.length}` : ''}`;
+}
+
+function filterReportsByDate(data) {
+  return data.filter((report) => {
+    const date = String(report.fecha || '').slice(0, 10);
+    return (!reportDateFilter.from || date >= reportDateFilter.from)
+      && (!reportDateFilter.to || date <= reportDateFilter.to);
+  });
+}
+
+function renderVisitCalendar(panel, visits) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() + index);
+    const key = date.toISOString().slice(0, 10);
+    const dayVisits = visits.filter((visit) => String(visit.fecha_cita).slice(0, 10) === key);
+    return `<article class="visit-day"><header><strong>${date.toLocaleDateString('es-MX', { weekday: 'short' })}</strong><span>${date.getDate()}</span></header>${dayVisits.length ? dayVisits.map((visit) => `<div class="visit-event"><time>${new Date(visit.fecha_cita).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}</time><strong>${escapeHtml(visit.propiedad)}</strong><small>${escapeHtml(visit.cliente)} · ${escapeHtml(visit.estado)}</small></div>`).join('') : '<p class="empty-calendar">Sin visitas</p>'}</article>`;
+  }).join('');
+  panel.insertAdjacentHTML('beforeend', `<div class="calendar-heading"><h3>Calendario de visitas</h3><span>Próximos 7 días</span></div><div class="visit-calendar">${days}</div>`);
+}
+
+function applyRecordFilter(select) {
+  const value = select.value.toLocaleLowerCase();
+  const panel = select.closest('.persisted-panel');
+  panel?.querySelectorAll('tbody tr').forEach((row) => {
+    row.hidden = value !== 'todas' && !row.textContent.toLocaleLowerCase().includes(value);
+  });
 }
 
 function configureContractForm(form) {
@@ -305,7 +535,8 @@ function updateMetrics(summary) {
     'contracts-view': [['Contratos registrados', records.contracts.length], ['Ventas', records.contracts.filter((item) => item.tipo_operacion === 'VENTA').length], ['Rentas', records.contracts.filter((item) => item.tipo_operacion === 'RENTA').length], ['Operaciones del mes', records.contracts.filter((item) => new Date(item.fecha_contrato).getMonth() === new Date().getMonth()).length]],
     'finance-view': [['Comisiones registradas', records.commissions.length], ['Total comisión', formatMoney(records.commissions.reduce((sum, item) => sum + Number(item.monto_total || 0), 0))], ['Operaciones comisionadas', new Set(records.commissions.map((item) => String(item.id_propiedad))).size], ['Ventas registradas', records.sales.length]],
     'rents-view': [['Contratos activos', countStatus(records.rentals, 'estado', ['activa'])], ['Pagos recibidos', countStatus(records.payments, 'estado', ['pagado'])], ['Pagos pendientes', countStatus(records.payments, 'estado', ['pendiente', 'vencido'])], ['Saldo pendiente', formatMoney(records.payments.filter((item) => ['pendiente', 'vencido'].includes(String(item.estado).toLowerCase())).reduce((sum, item) => sum + Number(item.monto || 0), 0))]],
-    'users-view': [['Usuarios registrados', records.users.length], ['Administradores', countStatus(records.users, 'rol', ['admin', 'administrador'])], ['Vendedores', countStatus(records.users, 'rol', ['agente', 'vendedor'])], ['Eventos auditados', records.activity?.length || 0]],
+    'sellers-view': [['Vendedores registrados', records.sellers.length], ['Vendedores activos', countStatus(records.sellers, 'activo', [true, 'true'])], ['Comisiones del mes', formatMoney(records.sellers.reduce((sum, item) => sum + Number(item.comision_mes || 0), 0))], ['Rol requerido', 'Administrador']],
+    'users-view': [['Usuarios registrados', records.users.filter((item) => item.rol === 'usuario').length], ['Administradores', countStatus(records.users, 'rol', ['admin', 'administrador'])], ['Usuarios activos', countStatus(records.users, 'activo', [true, 'true'])], ['Rol requerido', 'Administrador']],
     'reports-view': [['Propiedades', records.properties.length], ['Clientes', records.clients.length], ['Operaciones cerradas', records.sales.length], ['Documentos', records.documents.length]],
   };
   Object.entries(metrics).forEach(([viewId, items]) => {
@@ -333,55 +564,63 @@ function updateMetrics(summary) {
 function renderActivity(activity) {
   const list = document.querySelector('#dashboard-view .activity-list');
   if (!list) return;
+  const actionLabels = { crear: 'registró', actualizar: 'actualizó', eliminar: 'eliminó', archivar: 'archivó', ejecutar: 'ejecutó' };
+  const entityLabels = { usuarios: 'un usuario', clientes: 'un cliente', contratos: 'un contrato', propiedades: 'una propiedad', leads: 'un prospecto', citas: 'una cita', ventas: 'una venta', rentas: 'una renta', pagos_renta: 'un pago', comisiones: 'una comisión', coincidencias: 'coincidencias' };
   list.innerHTML = activity.length ? activity.map((item) => `
     <div class="activity-item"><span class="activity-icon">${escapeHtml(item.accion.slice(0, 1).toLocaleUpperCase())}</span>
-      <div><p><strong>${escapeHtml(item.accion)} · ${escapeHtml(item.entidad)}</strong></p>
-        <p>${escapeHtml(item.usuario)} ${escapeHtml(item.detalle?.titulo || item.detalle?.nombre || '')}</p>
+      <div><p><strong>${escapeHtml(item.usuario)}</strong> ${escapeHtml(actionLabels[item.accion] || 'realizó una acción en')} ${escapeHtml(entityLabels[item.entidad] || 'el sistema')}</p>
+        <p>${escapeHtml(item.detalle?.titulo || item.detalle?.nombre || item.detalle?.correo || '')}</p>
         <small>${escapeHtml(new Date(item.creado_en).toLocaleString('es-MX'))}</small></div></div>
   `).join('') : '<p class="empty-records">Todavía no hay actividad registrada.</p>';
 }
 
-function renderDictionary(schema) {
-  const entityList = document.querySelector('.entity-list');
-  if (!entityList || !schema.length) return;
-  const tables = [...new Set(schema.map((column) => column.table_name))];
-  entityList.innerHTML = `<strong>Entidades</strong>${tables.map((table, index) => `<button class="entity${index === 0 ? ' active' : ''}" type="button" data-table-name="${escapeHtml(table)}">${escapeHtml(table)} <span>${schema.filter((column) => column.table_name === table).length}</span></button>`).join('')}`;
-  const showTable = (tableName) => {
-    const columns = schema.filter((column) => column.table_name === tableName);
-    const heading = document.querySelector('.schema-title h2');
-    const description = document.querySelector('.schema-title p');
-    const body = document.querySelector('.schema-table tbody');
-    if (heading) heading.textContent = tableName;
-    if (description) description.textContent = `${columns.length} campos en la base de datos conectada`;
-    if (body) body.innerHTML = columns.map((column) => `<tr><td><strong>${escapeHtml(column.column_name)}</strong></td><td><code>${escapeHtml(column.data_type)}</code></td><td>${escapeHtml(column.clave)}</td><td>${column.is_nullable === 'NO' ? 'Obligatorio' : 'Opcional'}</td></tr>`).join('');
-  };
-  showTable(tables[0]);
-  entityList.querySelectorAll('[data-table-name]').forEach((button) => button.addEventListener('click', () => {
-    entityList.querySelectorAll('.entity').forEach((item) => item.classList.toggle('active', item === button));
-    showTable(button.dataset.tableName);
-  }));
-}
-
 async function loadWorkspace() {
   try {
-    const [properties, summary, options] = await Promise.all([
+    const [propertiesResult, summaryResult, optionsResult] = await Promise.allSettled([
       api.request('/api/properties'), api.get('summary'), api.get('options'),
     ]);
-    Object.assign(optionData, options.data);
-    records.properties = properties.data;
+    if (propertiesResult.status === 'rejected') throw propertiesResult.reason;
+    if (summaryResult.status === 'rejected') throw summaryResult.reason;
+    if (optionsResult.status === 'rejected') throw optionsResult.reason;
+    Object.assign(optionData, optionsResult.value.data);
+    records.properties = propertiesResult.value.data;
     const currentUser = JSON.parse(localStorage.getItem('habita_user') || '{}');
-    const isAdmin = ['administrador', 'admin'].includes(currentUser.rol);
+    const role = String(currentUser.rol || currentUser.role || '').toLowerCase();
+    const isAdmin = ['administrador', 'admin'].includes(role);
     const usersNavigation = document.querySelector('[data-view="users"]');
+    const sellersNavigation = document.querySelector('[data-view="sellers"]');
+    const financeNavigation = document.querySelector('[data-view="finance"]');
     if (usersNavigation) usersNavigation.hidden = !isAdmin;
-    const resources = Object.keys(tableConfig).filter((resource) => resource !== 'properties' && (resource !== 'users' || isAdmin));
-    const responses = await Promise.all(resources.map((resource) => api.get(resource)));
-    resources.forEach((resource, index) => { records[resource] = responses[index].data; });
+    if (sellersNavigation) sellersNavigation.hidden = !isAdmin;
+    if (financeNavigation) financeNavigation.hidden = !isAdmin;
+    const financeView = document.getElementById('finance-view');
+    if (financeView) financeView.hidden = !isAdmin;
+    const usersView = document.getElementById('users-view');
+    const sellersView = document.getElementById('sellers-view');
+    if (usersView) usersView.hidden = !isAdmin;
+    if (sellersView) sellersView.hidden = !isAdmin;
+    const resources = Object.keys(tableConfig).filter((resource) => resource !== 'properties'
+      && (resource !== 'users' || isAdmin)
+      && (resource !== 'sellers' || isAdmin)
+      && (resource !== 'commissions' || isAdmin));
+    const responses = await Promise.allSettled(resources.map((resource) => api.get(resource)));
+    resources.forEach((resource, index) => {
+      const result = responses[index];
+      if (result.status === 'fulfilled') {
+        records[resource] = Array.isArray(result.value.data) ? result.value.data : [];
+      } else {
+        records[resource] = [];
+        console.error(`No se pudo cargar la tabla ${resource}:`, result.reason);
+      }
+    });
     if (!isAdmin) records.users = [];
-    const [activity, schema] = await Promise.all([
-      api.get('activity'), api.get('schema'),
-    ]);
-    records.activity = activity.data;
-    records.schema = schema.data;
+    if (!isAdmin) records.sellers = [];
+    if (!isAdmin) records.commissions = [];
+    const activityResult = await api.get('activity').catch((error) => {
+      console.error('No se pudo cargar la actividad:', error);
+      return { data: [] };
+    });
+    records.activity = activityResult.data;
     renderDashboardProperties(records.properties);
     renderRecords('properties', 'properties-view', records.properties);
     renderRecords('clients', 'clients-view', records.clients);
@@ -395,10 +634,11 @@ async function loadWorkspace() {
     renderRecords('rentals', 'rents-view', records.rentals);
     renderRecords('payments', 'rents-view', records.payments);
     renderRecords('contracts', 'contracts-view', records.contracts);
+    renderRecords('reports', 'reports-view', records.reports);
     if (isAdmin) renderRecords('users', 'users-view', records.users);
+    if (isAdmin) renderRecords('sellers', 'sellers-view', records.sellers);
     renderActivity(records.activity);
-    renderDictionary(records.schema);
-    updateMetrics(summary.data);
+    updateMetrics(summaryResult.value.data);
   } catch (error) {
     console.error(error);
     if (/sesion|autenticacion/i.test(error.message)) showLogin();
@@ -408,25 +648,41 @@ async function loadWorkspace() {
 
 function addSecondaryActions() {
   const actions = {
-    'clients-view': [['lead', 'Nuevo prospecto']],
+    'clients-view': [['client', 'Nuevo cliente']],
+    'legal-view': [['contract', 'Generar contrato']],
     'finance-view': [['commission', 'Registrar comisión']],
     'rents-view': [['rental', 'Nueva renta']],
   };
   Object.entries(actions).forEach(([viewId, buttons]) => {
     const intro = document.querySelector(`#${viewId} .page-intro`);
     if (!intro) return;
+    let actionGroup = intro.querySelector('.page-intro-actions');
+    if (!actionGroup) {
+      actionGroup = document.createElement('div');
+      actionGroup.className = 'page-intro-actions';
+      const existingAction = intro.querySelector(':scope > [data-open-form]');
+      if (existingAction) actionGroup.append(existingAction);
+      intro.append(actionGroup);
+    }
     buttons.forEach(([kind, label]) => {
+      actionGroup.querySelectorAll(`[data-open-form="${kind}"]`).forEach((button) => button.remove());
       const button = document.createElement('button');
       button.className = 'outline-button';
       button.dataset.openForm = kind;
+      button.dataset.secondaryAction = kind;
       button.textContent = label;
-      intro.append(button);
+      actionGroup.append(button);
     });
   });
 }
 
 function downloadCsv(resource) {
-  const data = records[resource] || [];
+  const data = resource === 'reports'
+    ? filterReportsByDate(records[resource] || [])
+    : records[resource] || [];
+  if (resource === 'reports' && reportDateFilter.from && reportDateFilter.to && reportDateFilter.from > reportDateFilter.to) {
+    return showToast('La fecha inicial no puede ser posterior a la fecha final.', true);
+  }
   if (!data.length) return showToast('No hay registros para exportar.', true);
   const columns = Object.keys(data[0]);
   const csv = [columns.join(','), ...data.map((record) => columns.map((key) => `"${String(record[key] ?? '').replace(/"/g, '""')}"`).join(','))].join('\r\n');
@@ -518,6 +774,7 @@ function openStatusForm(resource, id) {
     offers: ['PENDIENTE', 'ACEPTADA', 'RECHAZADA', 'CANCELADA'],
     rentals: ['Activa', 'Finalizada', 'Cancelada'],
     payments: ['PENDIENTE', 'PAGADO', 'VENCIDO'],
+    commissions: ['PENDIENTE', 'PAGADA'],
   }[resource];
   const dialog = ensureDialog();
   const form = dialog.querySelector('#workflow-form');
@@ -534,6 +791,8 @@ function openStatusForm(resource, id) {
 function openPropertyEdit(id) {
   const record = records.properties.find((property) => String(property.id_propiedad) === String(id));
   if (!record) return;
+  const currentUser = JSON.parse(localStorage.getItem('habita_user') || '{}');
+  const isAdmin = ['administrador', 'admin'].includes(currentUser.rol);
   const dialog = ensureDialog();
   const form = dialog.querySelector('#workflow-form');
   form.dataset.kind = 'property-edit';
@@ -542,7 +801,33 @@ function openPropertyEdit(id) {
   dialog.querySelector('.form-error').textContent = '';
   const fields = [
     ['titulo', 'Título', 'text', true], ['descripcion', 'Descripción', 'textarea'],
-    ['precio', 'Precio', 'number', true], ['estado_propiedad', 'Estado', 'select', true, ['Disponible', 'Reservada', 'Vendida', 'Rentada', 'Inactiva']],
+    ['precio', 'Precio', 'number', true], ['imagen_url', 'Imagen de la propiedad (URL)', 'url'],
+    ['latitud', 'Latitud de Google Maps', 'number'], ['longitud', 'Longitud de Google Maps', 'number'],
+    ['estado_propiedad', 'Estado', 'select', true, ['Disponible', 'Reservada', 'Vendida', 'Rentada', 'Inactiva']],
+    ...(isAdmin ? [['id_categoria', 'Categoría', 'options', true, 'categories']] : []),
+  ].map((definition) => {
+    const element = renderField(definition);
+    const input = element.querySelector('input, textarea, select');
+    input.value = definition[0] === 'id_categoria' ? record.id_categoria : record[definition[0]] ?? '';
+    return element;
+  });
+  dialog.querySelector('.workflow-fields').replaceChildren(...fields);
+  dialog.showModal();
+}
+
+function openSellerEdit(id) {
+  const record = records.sellers.find((seller) => String(seller.id_usuario) === String(id));
+  if (!record) return;
+  const dialog = ensureDialog();
+  const form = dialog.querySelector('#workflow-form');
+  form.dataset.kind = 'seller-edit';
+  form.dataset.recordId = id;
+  dialog.querySelector('h2').textContent = 'Editar vendedor';
+  dialog.querySelector('.form-error').textContent = '';
+  const fields = [
+    ['nombre', 'Nombre', 'text', true], ['apellido_paterno', 'Apellido paterno', 'text', true],
+    ['apellido_materno', 'Apellido materno', 'text'], ['correo', 'Correo', 'email', true],
+    ['telefono', 'Teléfono', 'tel'], ['password', 'Nueva contraseña (opcional)', 'password'],
   ].map((definition) => {
     const element = renderField(definition);
     const input = element.querySelector('input, textarea, select');
@@ -550,6 +835,100 @@ function openPropertyEdit(id) {
     return element;
   });
   dialog.querySelector('.workflow-fields').replaceChildren(...fields);
+  dialog.showModal();
+}
+
+function openUserEdit(id) {
+  const record = records.users.find((user) => String(user.id_usuario) === String(id));
+  if (!record) {
+    showToast('No se encontró el usuario seleccionado. Recarga la lista e inténtalo de nuevo.', true);
+    return;
+  }
+  const dialog = ensureDialog();
+  const form = dialog.querySelector('#workflow-form');
+  form.dataset.kind = 'user-edit';
+  form.dataset.recordId = id;
+  dialog.querySelector('h2').textContent = 'Editar usuario o administrador';
+  dialog.querySelector('.form-error').textContent = '';
+  const fields = [
+    ['nombre', 'Nombre', 'text', true], ['apellido_paterno', 'Apellido paterno', 'text', true],
+    ['apellido_materno', 'Apellido materno', 'text'], ['correo', 'Correo', 'email', true],
+    ['telefono', 'Teléfono', 'tel'], ['password', 'Nueva contraseña (opcional)', 'password'],
+    ['rol', 'Función', 'select', true, [
+      { id: 'cliente', nombre: 'Cliente' },
+      { id: 'usuario', nombre: 'Usuario' },
+      { id: 'vendedor', nombre: 'Vendedor' },
+      { id: 'administrador', nombre: 'Administrador' },
+    ]],
+  ].map((definition) => {
+    const element = renderField(definition);
+    const input = element.querySelector('input, textarea, select');
+    if (definition[0] === 'rol') input.value = record.rol === 'admin' ? 'administrador' : record.rol;
+    else input.value = record[definition[0]] ?? '';
+    return element;
+  });
+  dialog.querySelector('.workflow-fields').replaceChildren(...fields);
+  dialog.showModal();
+}
+
+function openUserStatus(id) {
+  const record = records.users.find((user) => String(user.id_usuario) === String(id));
+  if (!record) {
+    showToast('No se encontró el usuario seleccionado. Recarga la lista e inténtalo de nuevo.', true);
+    return;
+  }
+  const dialog = ensureDialog();
+  const form = dialog.querySelector('#workflow-form');
+  form.dataset.kind = 'user-status';
+  form.dataset.resource = 'users';
+  form.dataset.recordId = id;
+  dialog.querySelector('h2').textContent = 'Actualizar estado del usuario / administrador';
+  dialog.querySelector('.form-error').textContent = '';
+  const field = renderField(['activo', 'Estado', 'select', true, [
+    { id: 'true', nombre: 'Activo' }, { id: 'false', nombre: 'Inactivo' },
+  ]]);
+  field.querySelector('select').value = String(record.activo !== false);
+  dialog.querySelector('.workflow-fields').replaceChildren(field);
+  dialog.showModal();
+}
+function openSellerStatus(id) {
+  const record = records.sellers.find((seller) => String(seller.id_usuario) === String(id));
+  if (!record) {
+    showToast('No se encontró el vendedor seleccionado. Recarga la lista e inténtalo de nuevo.', true);
+    return;
+  }
+  const dialog = ensureDialog();
+  const form = dialog.querySelector('#workflow-form');
+  form.dataset.kind = 'user-status';
+  form.dataset.resource = 'sellers';
+  form.dataset.recordId = id;
+  dialog.querySelector('h2').textContent = 'Actualizar estado del vendedor';
+  dialog.querySelector('.form-error').textContent = '';
+  const field = renderField(['activo', 'Estado', 'select', true, [
+    { id: 'true', nombre: 'Activo' }, { id: 'false', nombre: 'Inactivo' },
+  ]]);
+  field.querySelector('select').value = String(record.activo !== false);
+  dialog.querySelector('.workflow-fields').replaceChildren(field);
+  dialog.showModal();
+}
+
+function openClientStatus(id) {
+  const record = records.clients.find((client) => String(client.id_cliente) === String(id));
+  if (!record) {
+    showToast('No se encontró el cliente seleccionado.', true);
+    return;
+  }
+  const dialog = ensureDialog();
+  const form = dialog.querySelector('#workflow-form');
+  form.dataset.kind = 'client-status';
+  form.dataset.recordId = id;
+  dialog.querySelector('h2').textContent = 'Actualizar estado del cliente';
+  dialog.querySelector('.form-error').textContent = '';
+  const field = renderField(['activo', 'Estado', 'select', true, [
+    { id: 'true', nombre: 'Activo' }, { id: 'false', nombre: 'Inactivo' },
+  ]]);
+  field.querySelector('select').value = String(record.activo !== false);
+  dialog.querySelector('.workflow-fields').replaceChildren(field);
   dialog.showModal();
 }
 
@@ -565,10 +944,31 @@ async function submitDialog(form) {
     if (kind === 'status') {
       const values = Object.fromEntries(new FormData(form));
       await api.update(form.dataset.resource, form.dataset.recordId, values);
+    } else if (kind === 'user-status') {
+      const values = Object.fromEntries(new FormData(form));
+      values.activo = values.activo === 'true';
+      await api.request(`/api/workflows/users/${form.dataset.recordId}`, { method: 'PATCH', body: JSON.stringify(values) });
+    } else if (kind === 'client-status') {
+      const values = Object.fromEntries(new FormData(form));
+      values.activo = values.activo === 'true';
+      await api.request(`/api/workflows/clients/${form.dataset.recordId}`, { method: 'PATCH', body: JSON.stringify(values) });
     } else if (kind === 'property-edit') {
       const values = Object.fromEntries(new FormData(form));
       values.precio = Number(values.precio);
+      ['latitud', 'longitud'].forEach((key) => {
+        if (values[key] === '') delete values[key];
+        else if (values[key] !== undefined) values[key] = Number(values[key]);
+      });
+      if (!values.id_categoria) delete values.id_categoria;
       await api.request(`/api/properties/${form.dataset.recordId}`, { method: 'PUT', body: JSON.stringify(values) });
+    } else if (kind === 'seller-edit') {
+      const values = Object.fromEntries(new FormData(form));
+      if (!values.password) delete values.password;
+      await api.request(`/api/workflows/users/${form.dataset.recordId}`, { method: 'PATCH', body: JSON.stringify(values) });
+    } else if (kind === 'user-edit') {
+      const values = Object.fromEntries(new FormData(form));
+      if (!values.password) delete values.password;
+      await api.request(`/api/workflows/users/${form.dataset.recordId}`, { method: 'PATCH', body: JSON.stringify(values) });
     } else if (kind === 'document') {
       await api.create(config.resource, new FormData(form));
     } else {
@@ -628,22 +1028,14 @@ async function handlePageAction(button) {
   const action = {
     'dashboard-view': 'property', 'properties-view': 'property', 'clients-view': 'client',
     'visits-view': 'visit', 'contracts-view': 'offer', 'legal-view': 'document',
+    'sellers-view': 'seller',
     'users-view': 'user',
   }[viewId];
   if (action) return openForm(action);
-  if (viewId === 'matching-view') {
-    const result = await api.request('/api/workflows/matching/run', { method: 'POST', body: '{}' });
-    showToast(`${result.count} coincidencias guardadas.`);
-    return loadWorkspace();
-  }
   if (viewId === 'portal-view') return window.open('/portal.html', '_blank', 'noopener');
   if (viewId === 'rents-view') return openForm('payment');
   if (viewId === 'finance-view') return downloadCsv('commissions');
-  if (viewId === 'reports-view') {
-    const { data } = await api.get('summary');
-    return downloadDataCsv('resumen-operativo', [data]);
-  }
-  if (viewId === 'dictionary-view') return downloadCsv('schema');
+  if (viewId === 'reports-view') return downloadCsv('reports');
 }
 
 const loginForm = document.getElementById('login-form');
@@ -663,6 +1055,29 @@ loginForm?.addEventListener('submit', async (event) => {
 });
 
 document.addEventListener('click', async (event) => {
+  const filter = event.target.closest('[data-record-filter]');
+  if (filter) return;
+  const profileButton = event.target.closest('.profile-row, [title="Mi perfil"]');
+  if (profileButton) {
+    const menu = document.querySelector('.session-menu');
+    if (menu) {
+      menu.hidden = !menu.hidden;
+      profileButton.setAttribute('aria-expanded', String(!menu.hidden));
+    }
+    return;
+  }
+  const sessionAction = event.target.closest('[data-session-action]');
+  if (sessionAction) {
+    const message = sessionAction.dataset.sessionAction === 'suspend'
+      ? '¿Suspender la sesión actual?'
+      : '¿Salir de la sesión actual?';
+    if (window.confirm(message)) {
+      api.logout();
+      document.querySelector('.session-menu')?.setAttribute('hidden', '');
+      showLogin();
+    }
+    return;
+  }
   const closeButton = event.target.closest('[data-dialog-close]');
   if (closeButton) return closeButton.closest('dialog').close();
   const openButton = event.target.closest('[data-open-form]');
@@ -682,6 +1097,19 @@ document.addEventListener('click', async (event) => {
   }
   return;
   }
+  const propertyMapButton = event.target.closest('[data-property-map]');
+  if (propertyMapButton) {
+    const mapWindow = window.open('', '_blank');
+    try {
+      const result = await api.get(`properties/${propertyMapButton.dataset.propertyMap}/map`);
+      if (mapWindow) mapWindow.location.href = result.data.google_maps_url;
+      else window.location.href = result.data.google_maps_url;
+    } catch (error) {
+      mapWindow?.close();
+      showToast(error.message, true);
+    }
+    return;
+  }
   const downloadButton = event.target.closest('[data-download-document]');
   if (downloadButton) {
     try { await downloadDocument(downloadButton.dataset.downloadDocument); } catch (error) { showToast(error.message, true); }
@@ -689,8 +1117,52 @@ document.addEventListener('click', async (event) => {
   }
   const recordButton = event.target.closest('[data-record-action]');
   if (recordButton) {
-    const { action, resource, recordId } = recordButton.dataset;
+    const { recordAction: action, resource, recordId } = recordButton.dataset;
     if (action === 'edit' && resource === 'properties') return openPropertyEdit(recordId);
+    if (action === 'edit' && resource === 'sellers') return openSellerEdit(recordId);
+    if (action === 'edit' && resource === 'users') return openUserEdit(recordId);
+    if (action === 'status' && resource === 'users') return openUserStatus(recordId);
+    if (action === 'status' && resource === 'sellers') return openSellerStatus(recordId);
+    if (action === 'status' && resource === 'clients') return openClientStatus(recordId);
+    if (action === 'map' && resource === 'properties') {
+      const mapWindow = window.open('', '_blank');
+      try {
+        const result = await api.get(`properties/${recordId}/map`);
+        if (mapWindow) mapWindow.location.href = result.data.google_maps_url;
+        else window.location.href = result.data.google_maps_url;
+      } catch (error) {
+        mapWindow?.close();
+        showToast(error.message, true);
+      }
+      return;
+    }
+    if (action === 'delete' && resource === 'sellers') {
+      if (!window.confirm('¿Eliminar este vendedor? Esta acción no se puede deshacer.')) return;
+      try {
+        await api.request(`/api/workflows/users/${recordId}`, { method: 'DELETE' });
+        showToast('Vendedor eliminado.');
+        await loadWorkspace();
+      } catch (error) { showToast(error.message, true); }
+      return;
+    }
+    if (action === 'delete' && resource === 'properties') {
+      if (!window.confirm('¿Borrar esta propiedad? Dejará de aparecer en el listado.')) return;
+      try {
+        await api.request(`/api/properties/${recordId}`, { method: 'DELETE' });
+        showToast('Propiedad borrada.');
+        await loadWorkspace();
+      } catch (error) { showToast(error.message, true); }
+      return;
+    }
+    if (action === 'delete' && resource === 'users') {
+      if (!window.confirm('¿Eliminar este usuario? Esta acción no se puede deshacer.')) return;
+      try {
+        await api.request(`/api/workflows/users/${recordId}`, { method: 'DELETE' });
+        showToast('Usuario eliminado.');
+        await loadWorkspace();
+      } catch (error) { showToast(error.message, true); }
+      return;
+    }
     if (action === 'status') return openStatusForm(resource, recordId);
     if (action === 'archive' && window.confirm('¿Archivar esta propiedad? El registro se conservará en la base de datos.')) {
       try {
@@ -698,13 +1170,6 @@ document.addEventListener('click', async (event) => {
         showToast('Propiedad archivada.');
         await loadWorkspace();
       } catch (error) { showToast(error.message, true); }
-    }
-    return;
-  }
-  if (event.target.closest('.profile-row, [title="Mi perfil"]')) {
-    if (window.confirm('¿Cerrar la sesión actual?')) {
-      api.logout();
-      showLogin();
     }
     return;
   }
@@ -725,6 +1190,39 @@ document.addEventListener('submit', (event) => {
     event.preventDefault();
     submitDialog(event.target);
   }
+});
+
+document.addEventListener('change', (event) => {
+  if (event.target.matches('[data-record-filter]')) applyRecordFilter(event.target);
+  if (event.target.matches('[data-property-category]')) applyPropertyFilters(event.target.closest('.persisted-panel'));
+  if (event.target.matches('[data-record-date]')) {
+    const panel = event.target.closest('.persisted-panel');
+    const resource = panel?.dataset.recordPanel;
+    if (resource) {
+      const state = recordFilters[resource] || (recordFilters[resource] = { search: '', from: '', to: '' });
+      state[event.target.dataset.recordDate] = event.target.value;
+      if (resource === 'properties') applyPropertyFilters(panel);
+      else applyRecordFilters(panel, resource);
+    }
+  }
+  if (event.target.matches('[data-report-date]')) {
+    reportDateFilter[event.target.dataset.reportDate] = event.target.value;
+    if (reportDateFilter.from && reportDateFilter.to && reportDateFilter.from > reportDateFilter.to) {
+      showToast('La fecha inicial no puede ser posterior a la fecha final.', true);
+    }
+    renderRecords('reports', 'reports-view', records.reports);
+  }
+});
+
+document.addEventListener('input', (event) => {
+  if (event.target.matches('[data-record-search]')) {
+    const panel = event.target.closest('.persisted-panel');
+    const resource = event.target.dataset.recordSearch;
+    const state = recordFilters[resource] || (recordFilters[resource] = { search: '', from: '', to: '' });
+    state.search = event.target.value;
+    applyRecordFilters(panel, resource);
+  }
+  if (event.target.matches('[data-property-search]')) applyPropertyFilters(event.target.closest('.persisted-panel'));
 });
 
 const search = document.getElementById('global-search');

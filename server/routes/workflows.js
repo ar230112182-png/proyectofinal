@@ -24,7 +24,7 @@ const upload = multer({
 
 const listQueries = {
   clients: `SELECT c.id_cliente, c.id_usuario, u.nombre, u.apellido_paterno, u.apellido_materno,
-      u.correo, u.telefono, c.curp, c.direccion, c.ciudad, c.estado, c.codigo_postal
+      u.correo, u.telefono, u.activo, u.fecha_registro, c.curp, c.direccion, c.ciudad, c.estado, c.codigo_postal
     FROM clientes c JOIN usuarios u ON u.id_usuario = c.id_usuario ORDER BY c.id_cliente DESC`,
   leads: `SELECT id_lead, nombre, correo, telefono, origen, estado, nivel_interes,
       id_agente, consentimiento_datos, creado_en FROM leads ORDER BY creado_en DESC`,
@@ -51,7 +51,7 @@ const listQueries = {
       JOIN usuarios u ON u.id_usuario = c.id_usuario ORDER BY v.fecha_venta DESC`,
   commissions: `SELECT c.id_comision, c.id_propiedad, p.titulo AS propiedad,
       c.id_agente_captador, c.id_agente_vendedor, c.porcentaje_agencia,
-      c.monto_operacion, c.monto_total, c.creado_en FROM comisiones c
+      c.monto_operacion, c.monto_total, c.estado, c.creado_en FROM comisiones c
       JOIN propiedades p ON p.id_propiedad = c.id_propiedad ORDER BY c.creado_en DESC`,
   rentals: `SELECT r.id_renta, r.id_propiedad, p.titulo AS propiedad, r.id_cliente,
       u.nombre || ' ' || u.apellido_paterno AS cliente, r.id_agente, r.renta_mensual,
@@ -64,7 +64,14 @@ const listQueries = {
       JOIN rentas r ON r.id_renta = pg.id_renta
       JOIN propiedades p ON p.id_propiedad = r.id_propiedad ORDER BY pg.periodo DESC`,
   users: `SELECT id_usuario, nombre, apellido_paterno, apellido_materno,
-      correo, telefono, rol, fecha_registro FROM usuarios ORDER BY id_usuario`,
+      correo, telefono, rol, activo, fecha_registro FROM usuarios ORDER BY id_usuario`,
+  sellers: `SELECT id_usuario, nombre, apellido_paterno, apellido_materno,
+      correo, telefono, rol, activo, fecha_registro,
+      (SELECT COALESCE(SUM(c.monto_total), 0) FROM comisiones c
+       WHERE c.id_agente_vendedor = usuarios.id_usuario
+         AND date_trunc('month', c.creado_en) = date_trunc('month', CURRENT_DATE)) AS comision_mes
+    FROM usuarios
+    WHERE rol IN ('vendedor', 'agente') ORDER BY nombre, apellido_paterno`,
   contracts: `SELECT id_contrato, tipo_operacion, id_cliente, id_propiedad, id_vendedor,
       fecha_contrato, precio_total, renta_mensual, fecha_inicio, fecha_fin,
       frente_metros, fondo_metros, superficie_m2, latitud, longitud,
@@ -75,6 +82,20 @@ const listQueries = {
       m.id_propiedad, p.titulo AS propiedad, m.puntuacion, m.creada_en
     FROM coincidencias m JOIN leads l ON l.id_lead = m.id_lead
     JOIN propiedades p ON p.id_propiedad = m.id_propiedad ORDER BY m.puntuacion DESC`,
+  reports: `SELECT v.id_venta AS id, v.id_agente AS id_vendedor,
+      CONCAT_WS(' ', u.nombre, u.apellido_paterno) AS vendedor,
+      p.titulo AS propiedad, 'VENTA' AS operacion, v.precio_venta AS cobros,
+      v.fecha_venta AS fecha, 'vender' AS actividad
+    FROM ventas v JOIN propiedades p ON p.id_propiedad = v.id_propiedad
+      JOIN usuarios u ON u.id_usuario = v.id_agente
+    UNION ALL
+    SELECT r.id_renta AS id, r.id_agente AS id_vendedor,
+      CONCAT_WS(' ', u.nombre, u.apellido_paterno) AS vendedor,
+      p.titulo AS propiedad, 'RENTA' AS operacion, r.renta_mensual AS cobros,
+      r.fecha_inicio AS fecha, 'rentar' AS actividad
+    FROM rentas r JOIN propiedades p ON p.id_propiedad = r.id_propiedad
+      JOIN usuarios u ON u.id_usuario = r.id_agente
+    ORDER BY fecha DESC`,
 };
 
 async function audit(userId, action, entity, entityId, detail = {}) {
@@ -573,11 +594,19 @@ router.post('/matching/run', requireAuth, requireRole('agente', 'administrador')
 router.get('/:resource', requireAuth, async (request, response, next) => {
   const query = listQueries[request.params.resource];
   if (!query) return response.status(404).json({ error: 'Recurso no encontrado.' });
-  if (request.user.rol !== 'administrador' && request.user.rol !== 'vendedor' && request.user.rol !== 'admin') {
-    return response.status(403).json({ error: 'No tienes permisos para consultar usuarios.' });
+  const rol = request.user.rol;
+  const isAdmin = rol === 'administrador' || rol === 'admin';
+  const isVendedor = rol === 'vendedor' || rol === 'agente';
+  // Solo administradores y vendedores pueden usar el sistema interno
+  if (!isAdmin && !isVendedor) {
+    return response.status(403).json({ error: 'No tienes permisos para acceder al sistema.' });
   }
-  if (request.params.resource === 'users' && request.user.rol !== 'administrador' && request.user.rol !== 'admin') {
-    return response.status(403).json({ error: 'No tienes permisos para consultar usuarios.' });
+  // Solo administradores pueden consultar usuarios y vendedores
+  if ((request.params.resource === 'users' || request.params.resource === 'sellers') && !isAdmin) {
+    return response.status(403).json({ error: 'Solo los administradores pueden acceder a esta sección.' });
+  }
+  if (request.params.resource === 'commissions' && !isAdmin) {
+    return response.status(403).json({ error: 'Solo los administradores pueden acceder a comisiones y finanzas.' });
   }
   try {
     const result = await pool.query(query);
@@ -613,6 +642,27 @@ router.post('/clients', requireAuth, requireRole('agente', 'administrador'), asy
     return next(error);
   } finally {
     client.release();
+  }
+});
+
+router.patch('/clients/:id', requireAuth, requireRole('agente', 'administrador'), async (request, response, next) => {
+  const active = request.body.activo;
+  if (typeof active !== 'boolean') {
+    return response.status(400).json({ error: 'El estado debe ser activo o inactivo.' });
+  }
+  try {
+    const result = await pool.query(`
+      UPDATE usuarios u
+      SET activo = $1
+      FROM clientes c
+      WHERE c.id_cliente = $2 AND c.id_usuario = u.id_usuario
+      RETURNING c.id_cliente, u.activo
+    `, [active, request.params.id]);
+    if (!result.rowCount) return response.status(404).json({ error: 'Cliente no encontrado.' });
+    await audit(request.user.id_usuario, 'actualizar', 'clientes', request.params.id, { activo: active });
+    return response.json({ data: result.rows[0] });
+  } catch (error) {
+    return next(error);
   }
 });
 
@@ -701,15 +751,15 @@ router.post('/sales', requireAuth, requireRole('administrador'), async (request,
 });
 
 router.post('/commissions', requireAuth, requireRole('administrador'), async (request, response, next) => {
-  const { id_propiedad, id_agente_captador, id_agente_vendedor, porcentaje_agencia, monto_operacion, monto_total } = request.body;
+  const { id_propiedad, id_agente_captador, id_agente_vendedor, porcentaje_agencia, monto_operacion, monto_total, estado } = request.body;
   if (!id_propiedad || !monto_operacion || !monto_total) return response.status(400).json({ error: 'Propiedad y montos son obligatorios.' });
   try {
     const result = await pool.query(`
       INSERT INTO comisiones
-        (id_comision, id_propiedad, id_agente_captador, id_agente_vendedor, porcentaje_agencia, monto_operacion, monto_total)
-      VALUES (nextval('public.comisiones_id_comision_seq'), $1, $2, $3, $4, $5, $6) RETURNING *
+        (id_comision, id_propiedad, id_agente_captador, id_agente_vendedor, porcentaje_agencia, monto_operacion, monto_total, estado)
+      VALUES (nextval('public.comisiones_id_comision_seq'), $1, $2, $3, $4, $5, $6, COALESCE($7, 'PENDIENTE')) RETURNING *
     `, [id_propiedad, id_agente_captador || null, id_agente_vendedor || null,
-      porcentaje_agencia || 0, monto_operacion, monto_total]);
+      porcentaje_agencia || 0, monto_operacion, monto_total, estado || null]);
     await audit(request.user.id_usuario, 'crear', 'comisiones', result.rows[0].id_comision);
     return response.status(201).json({ data: result.rows[0] });
   } catch (error) {
@@ -755,8 +805,8 @@ router.post('/users', requireAuth, requireRole('administrador'), async (request,
   if (!nombre || !apellido_paterno || !correo || !password || !normalizedRole) {
     return response.status(400).json({ error: 'Nombre, apellido, correo, contraseña y rol son obligatorios.' });
   }
-  if (!['administrador', 'vendedor'].includes(normalizedRole)) {
-    return response.status(400).json({ error: 'El rol debe ser administrador o vendedor.' });
+  if (!['cliente', 'usuario', 'administrador', 'vendedor'].includes(normalizedRole)) {
+    return response.status(400).json({ error: 'El rol debe ser cliente, usuario, administrador o vendedor.' });
   }
   if (String(password).length < 12) {
     return response.status(400).json({ error: 'La contraseña debe tener al menos 12 caracteres.' });
@@ -779,6 +829,74 @@ router.post('/users', requireAuth, requireRole('administrador'), async (request,
   }
 });
 
+router.patch('/users/:id', requireAuth, requireRole('administrador'), async (request, response, next) => {
+  const { nombre, apellido_paterno, apellido_materno, correo, telefono, password, rol, activo } = request.body;
+  const fields = [];
+  const values = [];
+  const addField = (field, value) => {
+    if (value !== undefined) {
+      fields.push(`${field} = $${values.length + 1}`);
+      values.push(typeof value === 'string' ? value.trim() : value);
+    }
+  };
+  addField('nombre', nombre);
+  addField('apellido_paterno', apellido_paterno);
+  addField('apellido_materno', apellido_materno);
+  addField('correo', correo ? String(correo).toLowerCase() : correo);
+  addField('telefono', telefono);
+  if (activo !== undefined) {
+    if (typeof activo !== 'boolean') {
+      return response.status(400).json({ error: 'El estado debe ser activo o inactivo.' });
+    }
+    addField('activo', activo);
+  }
+  if (rol !== undefined) {
+    const normalizedRole = String(rol).toLowerCase();
+    if (!['cliente', 'usuario', 'administrador', 'vendedor'].includes(normalizedRole)) {
+      return response.status(400).json({ error: 'El rol debe ser cliente, usuario, administrador o vendedor.' });
+    }
+    fields.push(`rol = $${values.length + 1}`);
+    values.push(normalizedRole);
+  }
+  if (password !== undefined && password !== '') {
+    if (String(password).length < 12) {
+      return response.status(400).json({ error: 'La contraseña debe tener al menos 12 caracteres.' });
+    }
+    fields.push(`password = $${values.length + 1}`);
+    values.push(await bcrypt.hash(password, 12));
+  }
+  if (!fields.length) return response.status(400).json({ error: 'No hay cambios válidos.' });
+  try {
+    const result = await pool.query(`
+      UPDATE usuarios SET ${fields.join(', ')}
+      WHERE id_usuario = $${values.length + 1}
+      RETURNING id_usuario, nombre, apellido_paterno, apellido_materno, correo, telefono, rol, activo
+    `, [...values, request.params.id]);
+    if (!result.rowCount) return response.status(404).json({ error: 'Usuario no encontrado.' });
+    await audit(request.user.id_usuario, 'actualizar', 'usuarios', request.params.id);
+    return response.json({ data: result.rows[0] });
+  } catch (error) {
+    if (error.code === '23505') return response.status(409).json({ error: 'Ya existe un usuario con ese correo.' });
+    return next(error);
+  }
+});
+
+router.delete('/users/:id', requireAuth, requireRole('administrador'), async (request, response, next) => {
+  try {
+    const result = await pool.query(`
+      DELETE FROM usuarios
+      WHERE id_usuario = $1 AND id_usuario <> $2
+      RETURNING id_usuario
+    `, [request.params.id, request.user.id_usuario]);
+    if (!result.rowCount) return response.status(404).json({ error: 'Usuario no encontrado o es tu propia cuenta.' });
+    await audit(request.user.id_usuario, 'eliminar', 'usuarios', request.params.id);
+    return response.status(204).send();
+  } catch (error) {
+    if (error.code === '23503') return response.status(409).json({ error: 'No se puede eliminar este usuario porque tiene registros relacionados.' });
+    return next(error);
+  }
+});
+
 router.patch('/:resource/:id', requireAuth, async (request, response, next) => {
   const { resource, id } = request.params;
   const allowed = {
@@ -787,6 +905,8 @@ router.patch('/:resource/:id', requireAuth, async (request, response, next) => {
     offers: { table: 'ofertas', key: 'id_oferta', fields: ['estado', 'notas'] },
     rentals: { table: 'rentas', key: 'id_renta', fields: ['estado', 'fecha_fin'] },
     payments: { table: 'pagos_renta', key: 'id_pago', fields: ['estado', 'pagado_en'] },
+    payments: { table: 'pagos_renta', key: 'id_pago', fields: ['estado', 'pagado_en'] },
+    commissions: { table: 'comisiones', key: 'id_comision', fields: ['estado'] },
   }[resource];
   if (!allowed) return response.status(404).json({ error: 'Recurso no editable.' });
   if (!['administrador', 'agente', 'admin'].includes(request.user.rol)) {

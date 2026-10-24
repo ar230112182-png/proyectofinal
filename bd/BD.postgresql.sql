@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
     correo VARCHAR(150) NOT NULL UNIQUE,
     contrasena VARCHAR(255) NOT NULL,
     telefono VARCHAR(20),
-    rol VARCHAR(20) NOT NULL DEFAULT 'cliente' CHECK (rol IN ('cliente', 'agente', 'administrador')),
+    rol VARCHAR(20) NOT NULL DEFAULT 'cliente' CHECK (rol IN ('cliente', 'usuario', 'agente', 'vendedor', 'administrador')),
     activo BOOLEAN NOT NULL DEFAULT TRUE,
     fecha_registro TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     fecha_actualizacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP

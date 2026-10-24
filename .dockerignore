@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.docker.example
+node_modules
+npm-debug.log*
+.git
+.gitignore
+.vscode
+Dockerfile
+docker-compose*.yml
+bd/*.dump
+bd/*.backup
+backups

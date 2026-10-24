@@ -1,6 +1,9 @@
 @echo off
 setlocal
 cd /d "%~dp0"
+set "APP_IP=192.168.1.247"
+set "APP_PORT=3007"
+set "APP_URL=http://%APP_IP%:%APP_PORT%"
 
 if not exist ".env" (
   echo No se encontro el archivo .env en esta carpeta.
@@ -38,23 +41,33 @@ if errorlevel 1 (
 )
 
 echo Iniciando la aplicacion...
-curl.exe --silent --fail --connect-timeout 1 --max-time 2 http://localhost:3007/api/health >nul 2>nul
+curl.exe --silent --fail --connect-timeout 1 --max-time 2 http://localhost:%APP_PORT%/api/health >nul 2>nul
 if not errorlevel 1 goto ready
 
-start "Bienes y Raises - servidor" /D "%~dp0" cmd /k npm start
+echo La aplicacion escuchara en todas las interfaces de red.
+start "Bienes y Raises - servidor" /D "%~dp0" cmd /k "set HOST=0.0.0.0&&set PORT=%APP_PORT%&&npm start"
 echo Esperando al servidor y a la base de datos...
 for /L %%i in (1,1,60) do (
-  curl.exe --silent --fail --connect-timeout 1 --max-time 2 http://localhost:3007/api/health >nul 2>nul
+  curl.exe --silent --fail --connect-timeout 1 --max-time 2 http://localhost:%APP_PORT%/api/health >nul 2>nul
   if not errorlevel 1 goto ready
   ping -n 2 127.0.0.1 >nul
 )
 
-echo El servidor no respondio en http://localhost:3007/.
+echo El servidor no respondio en http://localhost:%APP_PORT%/.
 echo Revisa los errores en la ventana "Bienes y Raises - servidor".
 pause
 exit /b 1
 
 :ready
-echo Servidor y PostgreSQL listos. Abriendo http://localhost:3007/...
-start "" "http://localhost:3007/"
+echo Servidor y PostgreSQL listos.
+echo Acceso desde este equipo: http://localhost:%APP_PORT%/
+echo Acceso desde otro dispositivo: %APP_URL%/
+set "IP_FOUND="
+for /f "delims=" %%I in ('powershell -NoProfile -Command "(Get-NetIPAddress -AddressFamily IPv4 -IPAddress '%APP_IP%' -ErrorAction SilentlyContinue).IPAddress"') do set "IP_FOUND=%%I"
+if not defined IP_FOUND (
+  echo AVISO: Este equipo no tiene asignada la IP %APP_IP%.
+  echo Configura esa IP en el adaptador de red o usa la IP mostrada por ipconfig.
+  echo El servidor esta iniciado, pero %APP_URL% no funcionara hasta asignar esa IP.
+)
+start "" "%APP_URL%/"
 exit /b 0
