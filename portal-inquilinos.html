@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Consulta privada de contratos y pagos de renta">
+  <meta name="theme-color" content="#193b3a">
+  <title>Portal de inquilinos | Bienes y Negocios Renato</title>
+  <link rel="stylesheet" href="estilo/style.css?v=6">
+</head>
+<body class="portal-page">
+  <header class="portal-header">
+    <a class="portal-brand" href="/portal.html" aria-label="Bienes y Negocios Renato"><img src="estilo/logo-renato.svg" alt="Bienes y Negocios Renato"></a>
+    <nav class="portal-header-links" aria-label="Accesos">
+      <a class="text-button" href="/portal.html">Ver propiedades</a>
+      <button id="tenant-logout" class="outline-button" type="button" hidden>Cerrar sesión</button>
+    </nav>
+  </header>
+  <main class="portal-main tenant-main">
+    <section class="portal-intro">
+      <p class="eyebrow">Área privada</p>
+      <h1>Portal de inquilinos</h1>
+      <p>Consulta tus rentas, pagos e información que tu asesor haya compartido contigo.</p>
+    </section>
+    <form id="tenant-login" class="tenant-login portal-form">
+      <h2>Iniciar sesión</h2>
+      <label>Correo electrónico<input name="correo" type="email" autocomplete="username" required></label>
+      <label>Contraseña<input name="contrasena" type="password" autocomplete="current-password" required></label>
+      <p id="tenant-login-error" class="form-error" role="alert"></p>
+      <button class="primary-button" type="submit">Entrar al portal</button>
+      <small>Solicita al equipo inmobiliario que habilite tu acceso si aún no tienes contraseña.</small>
+    </form>
+    <section id="tenant-account" hidden aria-live="polite"></section>
+  </main>
+  <script src="js/cruds/tenant-portal.js?v=1"></script>
+</body>
+</html>

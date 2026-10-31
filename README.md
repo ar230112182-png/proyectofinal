@@ -20,6 +20,18 @@ reportes.
 - Expedientes legales con carga de PDF, imágenes y documentos de Word.
 - Registro de auditoría de operaciones relevantes.
 - Filtros, búsqueda, reportes y exportación de datos.
+- Resumen con indicadores actuales de PostgreSQL y alertas para clientes
+  potenciales nuevos, visitas próximas, pagos pendientes y rentas por vencer.
+- Notificaciones internas con estado de lectura, historial de clientes y tareas
+  asignables de seguimiento.
+- Portal privado para inquilinos con consulta de rentas, pagos y documentos
+  compartidos por un administrador.
+- Portal público con filtros de inventario, fichas individuales y solicitudes
+  asociadas a una propiedad.
+- Solicitudes de mantenimiento vinculadas a propiedades o rentas, con prioridad,
+  responsable y seguimiento de costos.
+- Cobranza y renovaciones con adeudos, próximos pagos, rentas por vencer y
+  recibos imprimibles.
 - Diseño adaptable para escritorio y teléfono.
 
 ## Requisitos
@@ -100,7 +112,7 @@ npm run db:seed
 Este comando crea o actualiza el usuario administrador:
 
 - Correo: `admin@habita.local`
-- Contraseña: el valor configurado en `SEED_PASSWORD`
+- Contraseña:`tu_contraseña`
 
 Después del primer acceso cambia la contraseña y no uses estas credenciales en
 producción.
@@ -191,9 +203,11 @@ server/
   routes/                 Rutas de autenticación, propiedades y flujos
 js/cruds/main.js          Lógica de la aplicación autenticada
 js/cruds/portal.js        Portal público de propiedades
+js/cruds/tenant-portal.js Portal privado de inquilinos
 estilo/style.css          Estilos de la interfaz
 index.html                Panel interno
 portal.html               Portal público
+portal-inquilinos.html    Portal privado para inquilinos
 iniciar.bat               Iniciador para Windows
 ```
 
@@ -240,8 +254,30 @@ DELETE /api/workflows/users/:id
 ```text
 GET /api/health
 GET /api/workflows/public/properties
-POST /api/workflows/public/leads
+GET    /api/workflows/public/properties/:id
+POST   /api/workflows/public/leads
+GET    /api/workflows/notifications
+PATCH  /api/workflows/notifications/:id/read
+GET    /api/workflows/clients/:id/history
+POST   /api/workflows/clients/:id/activities
+GET    /api/workflows/tenant/me
+GET    /api/workflows/tenant/documents/:id/file
 ```
+
+## Paginación y carga de datos
+
+Para evitar saturar el servidor y el navegador cuando hay muchos registros, la carga se pagina en tres capas:
+
+1. **Base de datos:** las consultas de listado usan `ORDER BY` determinista (con el id como desempate), `LIMIT`/`OFFSET` y un `COUNT(*)` para el total. La migración `bd/migrations/008_pagination_indexes.sql` crea los índices que respaldan esos ordenamientos (se omiten de forma segura si una tabla o columna no existe).
+2. **API:** los listados (`GET /api/properties`, `GET /api/workflows/:recurso` y `GET /api/workflows/public/properties`) aceptan `?page=1&limit=50`. Valores por defecto: `page=1`, `limit=50`; máximo `limit=200`. Respuesta:
+
+   ```json
+   { "data": [], "meta": { "page": 1, "limit": 50, "total": 1234, "totalPages": 25 } }
+   ```
+
+3. **Frontend:** `api.getAllPages()` en `js/cruds/main.js` descarga los datos por lotes de 200 en lugar de una sola petición pesada, y el portal público (`js/cruds/portal.js`) muestra resultados conforme llegan los lotes. Las tablas del panel muestran 20 filas por página con botones Anterior/Siguiente (constante `PAGE_SIZE`); la búsqueda y los filtros se aplican antes de paginar y regresan a la página 1.
+
+Después de actualizar, ejecuta `npm run db:migrate` para crear los índices.
 
 ## Expedientes legales
 
@@ -253,6 +289,44 @@ La carga de documentos acepta:
 
 El límite máximo es de 10 MB por archivo. Los archivos se guardan en
 PostgreSQL como contenido binario y se registra un hash SHA-256 para auditoría.
+
+## Portales de clientes e inquilinos
+
+El portal público está disponible en `/portal.html`. Permite filtrar inmuebles
+por ubicación, operación, tipo, presupuesto y habitaciones; cada propiedad
+disponible tiene una ficha propia y puede vincularse a una solicitud de contacto.
+
+El portal privado está en `/portal-inquilinos.html`. Un administrador habilita
+el acceso desde **Clientes → Acceso portal** y define una contraseña inicial de
+al menos 12 caracteres. El inquilino puede consultar únicamente sus propias
+rentas, pagos, contratos y documentos expresamente compartidos. Para compartir
+un documento, abre el historial del cliente y selecciona **Dar acceso** junto
+al documento asociado a una renta activa.
+
+Las notificaciones del equipo se generan dentro del sistema para clientes
+nuevos, visitas próximas, pagos pendientes, rentas próximas a vencer y tareas
+de seguimiento. Se actualizan al abrir el menú y periódicamente mientras el
+panel está abierto.
+
+Al registrar una venta o una renta para un cliente cuyo correo coincide con el
+de un cliente potencial, su estado cambia automáticamente a **CONVERTIDO**.
+También se puede actualizar manualmente desde la tabla de clientes potenciales.
+
+La migración `010_customer_portals.sql` crea las tablas de seguimiento,
+notificaciones y permisos de documentos; se aplica con `npm run db:migrate`.
+
+## Mantenimiento, cobranza y renovaciones
+
+En **Mantenimiento** se pueden registrar solicitudes para una propiedad,
+relacionarlas opcionalmente con una renta, asignar un responsable, definir
+prioridad y fecha límite, y actualizar su estado y costo final.
+
+**Cobranza y renovaciones** reúne pagos de renta y contratos activos. Muestra
+adeudos vencidos, cobros previstos para los próximos 30 días y contratos que
+vencen dentro de los próximos 60 días. Los pagos se pueden marcar como pagados;
+el sistema registra la fecha de pago y habilita la descarga de un recibo
+imprimible. Para habilitar solicitudes de mantenimiento, aplica también la
+migración `011_maintenance_requests.sql` mediante `npm run db:migrate`.
 
 ## Pruebas y verificación manual
 
@@ -331,6 +405,32 @@ relacionados. En esos casos usa **Cambiar estado** y selecciona **Inactivo**.
 Este repositorio no declara una licencia de código abierto. No redistribuyas
 el código sin autorización de sus propietarios.
 
+## usuario y contraseña que se usa como administrador tu_contraseña // admin@tudominio.com
+se debe inicializar postgre con el comando psql -U postgres -d bienes_raices 
+y el comando nmp star 
+todo en terminal
+
+### Cargar 1500 registros de prueba
+
+Después de crear las tablas y configurar la conexión de PostgreSQL, ejecuta
+desde la raíz del proyecto:
+
+```powershell
+npm run db:seed:1500 -- -U postgres -d bienes_raices
+```
+
+El script [bd/seed_1500.sql](bd/seed_1500.sql) agrega 1500 registros
+relacionados en cada tabla principal (`usuarios`, `agentes`, `propietarios`,
+`direcciones`, `propiedades`, `compras` y `operaciones`). Usa el prefijo
+`demo1500` para identificar los datos de prueba y muestra un conteo al final.
+La contraseña de los usuarios demo es `Demo1500!`.
 
 
 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+
+28_10_26 0437.pm
+
+31_10_26 0258.pm
+
+31_10_26 0424.pm

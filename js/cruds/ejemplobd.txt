@@ -1,0 +1,702 @@
+"""
+Genera datos de prueba para las tablas de aplicacion del esquema public.
+
+Requiere Python 3.10+ y psycopg 3:
+    python -m pip install "psycopg[binary]"
+
+Configura DATABASE_URL en el entorno. Primero ejecuta el modo de revision:
+    python js/cruds/ejemplobd.txt
+
+Para insertar los registros:
+    python js/cruds/ejemplobd.txt --apply
+
+El programa no borra datos. Completa cada tabla hasta llegar a la cantidad
+solicitada; las tablas de usuarios, propiedades y direcciones reciben 3000
+filas cuando hace falta para poder relacionar 1500 agentes/clientes y 1500
+propiedades de venta/renta. Los eventos de auditoria los crea tambien el
+sistema por medio de sus triggers.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import os
+import sys
+import uuid
+from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
+from typing import Any
+
+import psycopg
+from psycopg import sql
+from psycopg.rows import dict_row
+from psycopg.types.json import Json, Jsonb
+
+
+TABLE_SCHEMA = "public"
+SKIP_TABLES = {"schema_migrations"}
+AGENT_ROLES = {"agente", "vendedor", "administrador", "admin"}
+CLIENT_ROLE = "cliente"
+PROPERTY_TYPES = ("CASA", "DEPARTAMENTO", "TERRENO", "LOCAL", "OFICINA", "EDIFICIO")
+CITIES = (
+    ("Guadalajara", "Jalisco"),
+    ("Ciudad de Mexico", "CDMX"),
+    ("Monterrey", "Nuevo Leon"),
+    ("Merida", "Yucatan"),
+    ("Puebla", "Puebla"),
+)
+
+# Es el mismo hash de prueba usado por bd/seed_1500.sql.
+# Cambialo por SEED_PASSWORD_HASH si necesitas que las cuentas puedan acceder.
+DEFAULT_PASSWORD_HASH = (
+    "$2b$12$Sn1ygJ74hOAYsf2W3wy5s.OM5OsOYFGDa.HEL/bbTrOWEzVdreccy"
+)
+
+
+def parse_arguments() -> argparse.Namespace:
+    """Lee la cantidad de filas solicitada y exige confirmacion para escribir."""
+    parser = argparse.ArgumentParser(description="Genera datos de prueba en PostgreSQL.")
+    parser.add_argument(
+        "--rows",
+        type=int,
+        default=int(os.getenv("SEED_ROWS", "1500")),
+        help="Minimo de filas por tabla (por defecto: 1500).",
+    )
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Inserta los datos; sin esta opcion solo muestra el plan.",
+    )
+    args = parser.parse_args()
+    if args.rows < 1:
+        parser.error("--rows debe ser mayor que cero.")
+    return args
+
+
+def load_schema(cursor: psycopg.Cursor) -> dict[str, dict[str, Any]]:
+    """Consulta columnas, claves y dependencias sin asumir nombres de columnas."""
+    cursor.execute(
+        """
+        SELECT c.table_name, c.column_name, c.data_type, c.udt_name,
+               c.is_nullable, c.column_default, c.is_identity,
+               c.is_generated, c.character_maximum_length, c.ordinal_position
+        FROM information_schema.columns AS c
+        JOIN information_schema.tables AS t
+          ON t.table_schema = c.table_schema AND t.table_name = c.table_name
+        WHERE c.table_schema = %s
+          AND t.table_type = 'BASE TABLE'
+          AND c.table_name NOT LIKE 'pg_%%'
+        ORDER BY c.table_name, c.ordinal_position
+        """,
+        (TABLE_SCHEMA,),
+    )
+    tables: dict[str, dict[str, Any]] = {}
+    for row in cursor.fetchall():
+        table = tables.setdefault(
+            row["table_name"],
+            {"columns": {}, "primary_key": [], "unique": [], "foreign_keys": {}},
+        )
+        table["columns"][row["column_name"]] = row
+
+    cursor.execute(
+        """
+        SELECT tc.table_name, tc.constraint_type, kcu.column_name,
+               kcu.ordinal_position, ccu.table_name AS foreign_table,
+               ccu.column_name AS foreign_column, tc.constraint_name
+        FROM information_schema.table_constraints AS tc
+        JOIN information_schema.key_column_usage AS kcu
+          ON kcu.constraint_schema = tc.constraint_schema
+         AND kcu.constraint_name = tc.constraint_name
+         AND kcu.table_name = tc.table_name
+        LEFT JOIN information_schema.constraint_column_usage AS ccu
+          ON ccu.constraint_schema = tc.constraint_schema
+         AND ccu.constraint_name = tc.constraint_name
+        WHERE tc.table_schema = %s
+          AND tc.constraint_type IN ('PRIMARY KEY', 'UNIQUE', 'FOREIGN KEY')
+        ORDER BY tc.table_name, tc.constraint_name, kcu.ordinal_position
+        """,
+        (TABLE_SCHEMA,),
+    )
+    constraints: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for row in cursor.fetchall():
+        table = tables.get(row["table_name"])
+        if not table:
+            continue
+        if row["constraint_type"] == "PRIMARY KEY":
+            table["primary_key"].append(row["column_name"])
+        elif row["constraint_type"] == "FOREIGN KEY":
+            table["foreign_keys"][row["column_name"]] = (
+                row["foreign_table"],
+                row["foreign_column"],
+            )
+        else:
+            key = (row["table_name"], row["constraint_name"])
+            constraints.setdefault(key, []).append(row)
+
+    for (table_name, _), columns in constraints.items():
+        tables[table_name]["unique"].append(
+            [column["column_name"] for column in columns]
+        )
+    return {name: table for name, table in tables.items() if name not in SKIP_TABLES}
+
+
+def order_tables(tables: dict[str, dict[str, Any]]) -> list[str]:
+    """Ordena las tablas para insertar primero las filas referenciadas."""
+    dependencies = {
+        name: {
+            foreign_table
+            for foreign_table, _ in table["foreign_keys"].values()
+            if foreign_table in tables and foreign_table != name
+        }
+        for name, table in tables.items()
+    }
+    ordered: list[str] = []
+    remaining = set(tables)
+    while remaining:
+        ready = sorted(name for name in remaining if not (dependencies[name] & remaining))
+        if not ready:
+            cyclic = ", ".join(sorted(remaining))
+            raise RuntimeError(
+                "No se puede ordenar la carga por una relacion circular entre: "
+                f"{cyclic}. Revisa las claves foraneas del esquema."
+            )
+        ordered.extend(ready)
+        remaining.difference_update(ready)
+    return ordered
+
+
+def table_count(cursor: psycopg.Cursor, table_name: str) -> int:
+    """Obtiene el conteo de una tabla usando identificadores SQL seguros."""
+    cursor.execute(
+        sql.SQL("SELECT COUNT(*) AS total FROM {}.{}").format(
+            sql.Identifier(TABLE_SCHEMA), sql.Identifier(table_name)
+        )
+    )
+    return int(cursor.fetchone()["total"])
+
+
+def target_for(table_name: str, rows: int) -> int:
+    """Calcula minimos mayores cuando hacen falta relaciones de ambos tipos."""
+    if table_name in {"usuarios", "propiedades", "direcciones"}:
+        return rows * 2
+    return rows
+
+
+def role_values(cursor: psycopg.Cursor) -> dict[str, list[int]]:
+    """Obtiene usuarios asignables a clientes y personal del sistema."""
+    cursor.execute(
+        """
+        SELECT id_usuario, LOWER(COALESCE(rol, '')) AS rol
+        FROM public.usuarios
+        ORDER BY id_usuario
+        """
+    )
+    roles: dict[str, list[int]] = {"agent": [], "client": []}
+    for row in cursor.fetchall():
+        if row["rol"] in AGENT_ROLES:
+            roles["agent"].append(row["id_usuario"])
+        elif row["rol"] == CLIENT_ROLE:
+            roles["client"].append(row["id_usuario"])
+    return roles
+
+
+def referenced_values(
+    cursor: psycopg.Cursor,
+    table_name: str,
+    column_name: str,
+    foreign_key: tuple[str, str],
+    roles: dict[str, list[int]],
+    operation: str | None,
+    tables: dict[str, dict[str, Any]],
+    reference_cache: dict[tuple[str, str, str | None], list[Any]],
+) -> list[Any]:
+    """Obtiene valores de una clave foranea y prioriza el rol relacionado."""
+    foreign_table, foreign_column = foreign_key
+    if foreign_table == "usuarios" and foreign_column == "id_usuario":
+        if table_name == "clientes" or column_name == "id_comprador":
+            selected = roles["client"]
+        else:
+            selected = roles["agent"]
+        if selected:
+            return selected
+
+    cache_key = (foreign_table, foreign_column, operation)
+    if cache_key in reference_cache:
+        return reference_cache[cache_key]
+
+    query = sql.SQL("SELECT {} FROM {}.{}").format(
+        sql.Identifier(foreign_column),
+        sql.Identifier(TABLE_SCHEMA),
+        sql.Identifier(foreign_table),
+    )
+    if foreign_table == "propiedades" and operation:
+        property_columns = tables[foreign_table]["columns"]
+        operation_column = (
+            "tipo_operacion"
+            if "tipo_operacion" in property_columns
+            else "operacion" if "operacion" in property_columns else None
+        )
+        if operation_column:
+            query += sql.SQL(" WHERE UPPER({}) = %s").format(
+                sql.Identifier(operation_column)
+            )
+            parameters: tuple[Any, ...] = (operation,)
+        else:
+            parameters = ()
+    else:
+        parameters = ()
+
+    query += sql.SQL(" ORDER BY {}").format(sql.Identifier(foreign_column))
+    cursor.execute(query, parameters)
+    reference_cache[cache_key] = [row[foreign_column] for row in cursor.fetchall()]
+    return reference_cache[cache_key]
+
+
+def count_by_role(cursor: psycopg.Cursor, role: str) -> int:
+    cursor.execute(
+        "SELECT COUNT(*) AS total FROM public.usuarios WHERE LOWER(rol) = %s",
+        (role,),
+    )
+    return int(cursor.fetchone()["total"])
+
+
+def operation_for(table_name: str, index: int) -> str | None:
+    """Alterna las operaciones para representar ventas y rentas."""
+    if table_name in {"ventas"}:
+        return "VENTA"
+    if table_name in {"rentas"}:
+        return "RENTA"
+    if table_name in {"propiedades", "contratos", "operaciones"}:
+        return "VENTA" if index % 2 == 0 else "RENTA"
+    return None
+
+
+def generated_value(
+    table_name: str,
+    column_name: str,
+    column: dict[str, Any],
+    index: int,
+    run_tag: str,
+    tables: dict[str, dict[str, Any]],
+    roles: dict[str, list[int]],
+    cursor: psycopg.Cursor,
+    reference_cache: dict[tuple[str, str, str | None], list[Any]],
+    overrides: dict[str, Any] | None = None,
+) -> Any:
+    """Construye un valor plausible a partir del nombre y tipo de columna."""
+    overrides = overrides or {}
+    if column_name in overrides:
+        return overrides[column_name]
+
+    foreign_key = tables[table_name]["foreign_keys"].get(column_name)
+    operation = operation_for(table_name, index)
+    if foreign_key:
+        values = referenced_values(
+            cursor,
+            table_name,
+            column_name,
+            foreign_key,
+            roles,
+            operation,
+            tables,
+            reference_cache,
+        )
+        if not values:
+            raise RuntimeError(
+                f"No hay valores para la clave foranea {table_name}.{column_name}."
+            )
+        return values[index % len(values)]
+
+    if column_name in tables[table_name]["primary_key"]:
+        if column.get("column_default") or column.get("is_identity") == "YES":
+            return None
+        return index + 1
+
+    low_name = column_name.lower()
+    table_low = table_name.lower()
+    if low_name in {"rol"}:
+        return "agente"
+    if low_name in {"activo", "consentimiento_datos"}:
+        return True
+    if low_name in {"tipo_operacion", "operacion"}:
+        return operation or ("VENTA" if index % 2 == 0 else "RENTA")
+    if low_name == "tipo":
+        if table_low in {"propiedades", "properties"}:
+            return PROPERTY_TYPES[index % len(PROPERTY_TYPES)]
+        if table_low in {"seguimientos_clientes"}:
+            return "nota"
+        if table_low in {"contratos", "rentas", "ventas"}:
+            return operation or "VENTA"
+        if table_low in {"ofertas"}:
+            return operation or "VENTA"
+        return "Contrato"
+    if low_name in {"estado_propiedad"}:
+        return "Disponible"
+    if low_name == "estado" and table_low == "direcciones":
+        return CITIES[index % len(CITIES)][1]
+    if low_name == "estado":
+        return {
+            "leads": "NUEVO",
+            "citas": "PROGRAMADA",
+            "ofertas": "PENDIENTE",
+            "expedientes_legales": "PENDIENTE",
+            "comisiones": "PENDIENTE",
+            "rentas": "activa",
+            "pagos_renta": "PENDIENTE",
+            "solicitudes_mantenimiento": "pendiente",
+            "seguimientos_clientes": "pendiente",
+            "operaciones": "COMPLETADA",
+            "propiedades": "DISPONIBLE",
+        }.get(table_low, "PENDIENTE")
+    if low_name in {"prioridad"}:
+        return ("normal", "alta", "baja", "urgente")[index % 4]
+    if low_name in {"nivel_interes"}:
+        return ("medio", "alto", "bajo")[index % 3]
+    if low_name in {"accion"}:
+        return "INSERT"
+    if low_name in {"entidad"}:
+        return table_low
+    if low_name in {"dedupe_key", "hash_archivo"}:
+        return hashlib.sha256(f"{run_tag}:{table_low}:{low_name}:{index}".encode()).hexdigest()
+    if low_name in {"correo", "email"}:
+        return f"demo1500.{table_low}.{index + 1}.{run_tag}@example.test"
+    if low_name in {"password", "contrasena"}:
+        return os.getenv("SEED_PASSWORD_HASH", DEFAULT_PASSWORD_HASH)
+    if low_name in {"nombre_archivo"}:
+        return f"documento-demo1500-{index + 1}.pdf"
+    if low_name in {"url", "imagen_url"}:
+        return f"https://example.test/demo1500/{table_low}-{index + 1}.jpg"
+    if low_name in {"nombre"}:
+        return f"Registro demo1500 {table_low} {index + 1}"
+    if low_name in {"apellido", "apellido_paterno", "apellido_materno"}:
+        return f"Apellido{index + 1:04d}"
+    if low_name in {"titulo", "titulo_propiedad"}:
+        return f"Propiedad demo1500 {index + 1:04d}"
+    if low_name in {"descripcion", "observaciones", "notas", "detalle", "motivo"}:
+        return f"Registro sintetico demo1500 {table_low} {index + 1}."
+    if low_name in {"contenido"}:
+        if column["udt_name"] == "bytea":
+            return b"%PDF-1.4\n% Documento sintetico demo1500\n"
+        return f"Actividad de prueba demo1500 {index + 1}."
+    if low_name in {"curp"}:
+        return f"DEMO{index + 1:014d}XX"
+    if low_name in {"telefono"}:
+        return f"555{index + 1:07d}"[-10:]
+    if low_name in {"calle"}:
+        return f"Calle demo1500 {index + 1}"
+    if low_name in {"numero"}:
+        return str(index + 1)
+    if low_name in {"colonia"}:
+        return f"Colonia demo1500 {index % 50 + 1}"
+    if low_name == "ciudad":
+        return CITIES[index % len(CITIES)][0]
+    if low_name in {"pais"}:
+        return "Mexico"
+    if low_name in {"codigo_postal"}:
+        return f"{10000 + index % 89999:05d}"
+    if low_name in {"mime_type"}:
+        return "application/pdf"
+    if low_name in {"tipo_archivo"}:
+        return "pdf"
+    if low_name in {"periodo"}:
+        first_month = date.today().replace(day=1)
+        month_offset = index % 120
+        month = first_month.month - 1 + month_offset
+        year = first_month.year + month // 12
+        return date(year, month % 12 + 1, 1)
+    if low_name in {"fecha_inicio"}:
+        return date.today() - timedelta(days=index % 900)
+    if low_name in {"fecha_fin", "fecha_limite"}:
+        return date.today() + timedelta(days=30 + index % 600)
+    if low_name in {"fecha_cita"}:
+        return datetime.now(timezone.utc) + timedelta(days=index % 120, hours=10)
+    if low_name in {"pagado_en", "leido_en"}:
+        return datetime.now(timezone.utc) - timedelta(days=index % 365)
+    if low_name.startswith("fecha") or low_name.endswith("_en") or low_name in {"creado", "actualizado"}:
+        return date.today() - timedelta(days=index % 1000)
+    if low_name in {"latitud"}:
+        return Decimal("20.6736") + Decimal(index % 1000) / Decimal("10000")
+    if low_name in {"longitud"}:
+        return Decimal("-103.344") - Decimal(index % 1000) / Decimal("10000")
+
+    data_type = column["data_type"]
+    if data_type in {"boolean"}:
+        return True
+    if data_type in {"json", "jsonb"} or column["udt_name"] in {"json", "jsonb"}:
+        value = [] if low_name in {"amenidades"} else {}
+        return Json(value) if column["udt_name"] == "json" else Jsonb(value)
+    if data_type == "bytea" or column["udt_name"] == "bytea":
+        return b"demo1500"
+    if data_type in {"smallint", "integer", "bigint"}:
+        if low_name in {"habitaciones", "banos", "estacionamientos", "habitaciones_min"}:
+            return index % 5 + 1
+        return index + 1
+    if data_type in {"numeric", "real", "double precision", "decimal"}:
+        if "porcentaje" in low_name or low_name == "puntuacion":
+            return Decimal("5.00") if "porcentaje" in low_name else Decimal("85.00")
+        if low_name in {"frente_metros", "fondo_metros", "superficie", "superficie_m2"}:
+            return Decimal("45.00") + Decimal(index % 250)
+        return Decimal("10000.00") + Decimal(index * 100)
+    if data_type == "date":
+        return date.today() - timedelta(days=index % 1000)
+    if "timestamp" in data_type:
+        return datetime.now(timezone.utc) - timedelta(days=index % 1000)
+
+    max_length = column.get("character_maximum_length")
+    fallback = f"Demo1500 {table_low} {low_name} {index + 1} {run_tag}"
+    if max_length:
+        return fallback[:max_length]
+    if column["is_nullable"] == "YES":
+        return None
+    return fallback
+
+
+def insert_rows(
+    cursor: psycopg.Cursor,
+    table_name: str,
+    table: dict[str, Any],
+    amount: int,
+    starting_index: int,
+    tables: dict[str, dict[str, Any]],
+    roles: dict[str, list[int]],
+    run_tag: str,
+    reference_cache: dict[tuple[str, str, str | None], list[Any]],
+    role_override: str | None = None,
+) -> None:
+    """Inserta filas por lotes y deja que PostgreSQL genere identidades."""
+    columns = list(table["columns"].values())
+    primary_keys = table["primary_key"]
+    insert_columns = [
+        column["column_name"]
+        for column in columns
+        if not (
+            column["is_identity"] == "YES"
+            or column["is_generated"] != "NEVER"
+            or column["column_default"] is not None
+        )
+    ]
+    if not insert_columns:
+        raise RuntimeError(f"La tabla {table_name} no tiene columnas insertables.")
+
+    overrides = {"rol": role_override} if role_override else None
+    placeholders = sql.SQL(", ").join(sql.Placeholder() for _ in insert_columns)
+    statement = sql.SQL("INSERT INTO {}.{} ({}) VALUES ({})").format(
+        sql.Identifier(TABLE_SCHEMA),
+        sql.Identifier(table_name),
+        sql.SQL(", ").join(map(sql.Identifier, insert_columns)),
+        placeholders,
+    )
+    manual_key = None
+    manual_key_start = 0
+    if len(primary_keys) == 1:
+        key_name = primary_keys[0]
+        key_column = table["columns"][key_name]
+        if not key_column["column_default"] and key_column["is_identity"] != "YES":
+            manual_key = key_name
+            cursor.execute(
+                sql.SQL("SELECT COALESCE(MAX({}), 0) AS max_id FROM {}.{}").format(
+                    sql.Identifier(key_name),
+                    sql.Identifier(TABLE_SCHEMA),
+                    sql.Identifier(table_name),
+                )
+            )
+            manual_key_start = int(cursor.fetchone()["max_id"])
+
+    for offset in range(0, amount, 250):
+        batch_size = min(250, amount - offset)
+        rows: list[tuple[Any, ...]] = []
+        for batch_index in range(batch_size):
+            index = starting_index + offset + batch_index
+            values = []
+            for column_name in insert_columns:
+                column = table["columns"][column_name]
+                row_overrides = dict(overrides or {})
+                if column_name == manual_key:
+                    row_overrides[column_name] = manual_key_start + index + 1
+                values.append(
+                    generated_value(
+                        table_name,
+                        column_name,
+                        column,
+                        index,
+                        run_tag,
+                        tables,
+                        roles,
+                        cursor,
+                        reference_cache,
+                        row_overrides,
+                    )
+                )
+            rows.append(tuple(values))
+        cursor.executemany(statement, rows)
+
+
+def seed_users(
+    cursor: psycopg.Cursor,
+    tables: dict[str, dict[str, Any]],
+    rows: int,
+    roles: dict[str, list[int]],
+    run_tag: str,
+    reference_cache: dict[tuple[str, str, str | None], list[Any]],
+) -> None:
+    """Prepara suficientes cuentas distintas para los clientes y agentes."""
+    if "usuarios" not in tables:
+        return
+    table = tables["usuarios"]
+    if "rol" not in table["columns"] or "id_usuario" not in table["columns"]:
+        raise RuntimeError("La tabla usuarios debe contener id_usuario y rol.")
+
+    for role in ("agente", CLIENT_ROLE):
+        missing = max(0, rows - count_by_role(cursor, role))
+        if missing:
+            insert_rows(
+                cursor,
+                "usuarios",
+                table,
+                missing,
+                0,
+                tables,
+                roles,
+                run_tag + role,
+                reference_cache,
+                role_override=role,
+            )
+            cursor.execute(
+                """
+                SELECT id_usuario FROM public.usuarios
+                WHERE LOWER(rol) = %s ORDER BY id_usuario
+                """,
+                (role,),
+            )
+            roles["agent" if role == "agente" else "client"] = [
+                row["id_usuario"] for row in cursor.fetchall()
+            ]
+
+
+def seed_audit_minimum(
+    cursor: psycopg.Cursor,
+    tables: dict[str, dict[str, Any]],
+    rows: int,
+    roles: dict[str, list[int]],
+    run_tag: str,
+    reference_cache: dict[tuple[str, str, str | None], list[Any]],
+) -> None:
+    """Completa auditoria hasta el minimo si los triggers no llegaron a ese total."""
+    if "auditoria" not in tables:
+        return
+    missing = max(0, rows - table_count(cursor, "auditoria"))
+    if not missing:
+        return
+    table = tables["auditoria"]
+    if "accion" not in table["columns"] or "entidad" not in table["columns"]:
+        raise RuntimeError("No se reconocen las columnas requeridas de auditoria.")
+    insert_rows(
+        cursor,
+        "auditoria",
+        table,
+        missing,
+        0,
+        tables,
+        roles,
+        run_tag + "audit",
+        reference_cache,
+    )
+
+
+def main() -> int:
+    args = parse_arguments()
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        print("Falta configurar la variable de entorno DATABASE_URL.", file=sys.stderr)
+        return 2
+
+    run_tag = uuid.uuid4().hex[:8]
+    try:
+        with psycopg.connect(database_url, row_factory=dict_row) as connection:
+            with connection.cursor() as cursor:
+                tables = load_schema(cursor)
+                if not tables:
+                    raise RuntimeError(
+                        "No se encontraron tablas de usuario en public. "
+                        "Crea el esquema y aplica las migraciones antes de cargar datos."
+                    )
+                ordered_tables = order_tables(tables)
+                roles = role_values(cursor) if "usuarios" in tables else {
+                    "agent": [],
+                    "client": [],
+                }
+                reference_cache: dict[
+                    tuple[str, str, str | None], list[Any]
+                ] = {}
+
+                plan = []
+                for table_name in ordered_tables:
+                    current = table_count(cursor, table_name)
+                    target = target_for(table_name, args.rows)
+                    missing = max(0, target - current)
+                    if table_name == "usuarios":
+                        missing = max(
+                            0,
+                            args.rows - count_by_role(cursor, "agente"),
+                        ) + max(
+                            0,
+                            args.rows - count_by_role(cursor, CLIENT_ROLE),
+                        )
+                    plan.append((table_name, current, target, missing))
+
+                print("Plan de carga para tablas public:")
+                for table_name, current, target, missing in plan:
+                    print(
+                        f"  {table_name}: actuales={current}, "
+                        f"objetivo_minimo={target}, por_insertar={missing}"
+                    )
+
+                if not args.apply:
+                    connection.rollback()
+                    print("\nRevision terminada. Agrega --apply para insertar.")
+                    return 0
+
+                seed_users(
+                    cursor, tables, args.rows, roles, run_tag, reference_cache
+                )
+                for table_name in ordered_tables:
+                    if table_name == "usuarios":
+                        continue
+                    current = table_count(cursor, table_name)
+                    target = target_for(table_name, args.rows)
+                    missing = max(0, target - current)
+                    if missing:
+                        insert_rows(
+                            cursor,
+                            table_name,
+                            tables[table_name],
+                            missing,
+                            current,
+                            tables,
+                            roles,
+                            run_tag,
+                            reference_cache,
+                        )
+                seed_audit_minimum(
+                    cursor,
+                    tables,
+                    args.rows,
+                    roles,
+                    run_tag,
+                    reference_cache,
+                )
+
+                print("\nConteo despues de la carga:")
+                for table_name in ordered_tables:
+                    print(f"  {table_name}: {table_count(cursor, table_name)}")
+            connection.commit()
+        print("\nCarga terminada. No se elimino ningun registro existente.")
+        return 0
+    except Exception as error:
+        print(f"\nCarga cancelada; no se confirmaron cambios: {error}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

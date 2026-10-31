@@ -1,3 +1,4 @@
+-- Agrega fotografia y ubicacion opcional al inventario de propiedades.
 BEGIN;
 
 ALTER TABLE public.propiedades

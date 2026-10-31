@@ -1,3 +1,4 @@
+-- Crea la bitacora comun para registrar cambios en las entidades del sistema.
 CREATE TABLE IF NOT EXISTS public.auditoria (
     id_evento BIGSERIAL PRIMARY KEY,
     id_usuario INTEGER REFERENCES public.usuarios(id_usuario) ON DELETE SET NULL,
@@ -9,6 +10,7 @@ CREATE TABLE IF NOT EXISTS public.auditoria (
     creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Guarda la operacion, el registro afectado y sus valores antes y despues.
 CREATE OR REPLACE FUNCTION public.registrar_auditoria()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -155,6 +157,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Instala el trigger de auditoria solo en tablas presentes en el esquema.
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'usuarios') THEN

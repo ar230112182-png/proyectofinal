@@ -1,3 +1,5 @@
+-- Completa el estado de comisiones y los detalles de auditoria usados por
+-- los flujos administrativos de la aplicacion.
 BEGIN;
 
 DO $$

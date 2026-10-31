@@ -1,3 +1,4 @@
+-- Normaliza el rol administrativo y limita los perfiles permitidos.
 BEGIN;
 
 ALTER TABLE public.usuarios

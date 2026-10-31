@@ -6,7 +6,9 @@ const router = express.Router();
 
 router.get('/', requireAuth, async (request, response, next) => {
   try {
-    const result = await pool.query(`
+    const page = Math.max(1, Number.parseInt(request.query.page, 10) || 1);
+    const limit = Math.min(200, Math.max(1, Number.parseInt(request.query.limit, 10) || 50));
+    const [result, count] = await Promise.all([pool.query(`
       SELECT p.id_propiedad, p.id_categoria, p.id_usuario, p.titulo,
              p.descripcion, p.precio, p.tipo_operacion, p.superficie,
              p.habitaciones, p.banos, p.estacionamientos, p.estado_propiedad,
@@ -21,8 +23,14 @@ router.get('/', requireAuth, async (request, response, next) => {
       LEFT JOIN direcciones d ON d.id_propiedad = p.id_propiedad
       WHERE p.eliminado = FALSE
       ORDER BY p.fecha_publicacion DESC NULLS LAST, p.id_propiedad DESC
-    `);
-    return response.json({ data: result.rows });
+      LIMIT $1 OFFSET $2
+    `, [limit, (page - 1) * limit]),
+    pool.query('SELECT COUNT(*)::int AS total FROM propiedades WHERE eliminado = FALSE')]);
+    const total = count.rows[0].total;
+    return response.json({
+      data: result.rows,
+      meta: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) },
+    });
   } catch (error) {
     return next(error);
   }
