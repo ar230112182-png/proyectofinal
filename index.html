@@ -8,17 +8,24 @@
     <title>Bienes y Negocios Renato</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="estilo/style.css?v=6">
+    <link
+        href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="estilo/style.css?v=19">
 </head>
 <body>
+    <div class="top-loading-bar" id="top-loading-bar" aria-hidden="true"></div>
     <!-- Estructura principal del espacio privado de trabajo. -->
     <div class="app-shell">
         <!-- Navegacion lateral para cambiar entre los modulos del sistema. -->
         <aside class="sidebar">
-            <div class="brand"><img class="brand-logo" src="estilo/logo-renato.svg" alt="Bienes y Negocios Renato"></div>
+            <div class="brand"><img class="brand-logo" src="estilo/Logo_bienes.jpeg" alt="Bienes y Negocios Renato"></div>
             <div class="workspace-label">Espacio de trabajo</div>
-            <div class="workspace-switcher"><span class="avatar avatar-small">MR</span><span><strong></strong><span class="users">Vendedores</span></span><span class="chevron"></span></div>
+            <div class="workspace-switcher">
+                <span class="avatar avatar-small">MR</span>
+                <span><strong></strong><span class="users">Vendedores</span></span>
+                <span class="chevron"></span>
+            </div>
             <nav class="main-nav" aria-label="Navegacion principal">
                 <div class="nav-heading">General</div>
                 <button class="nav-item active" data-view="dashboard"><span class="nav-icon">⌂</span> Resumen</button>
@@ -33,84 +40,490 @@
                 <button class="nav-item" data-view="maintenance"><span class="nav-icon">⌁</span> Mantenimiento</button>
                 <button class="nav-item" data-view="rents"><span class="nav-icon">⌂</span> Cobranza y renovaciones</button>
                 <button class="nav-item" data-view="sellers"><span class="nav-icon">◎</span> Vendedores</button>
-                <button class="nav-item" data-view="users"><span class="nav-icon">◉</span> Usuarios y administradores</button>
+                <button class="nav-item" data-view="users">
+                    <span class="nav-icon">◉</span> Usuarios y administradores
+                </button>
                 <button class="nav-item" data-view="reports"><span class="nav-icon">◒</span> Reportes</button>
             </nav>
-            <div class="sidebar-bottom"><div class="help-box"><span class="help-icon">?</span><div><strong>Centro de ayuda</strong><small>Conoce el sistema</small></div></div><button class="profile-row"><span class="avatar">MR</span><span><strong>Marina Rojas</strong><small>Super administradora</small></span><span class="more">•••</span></button></div>
+            <div class="sidebar-bottom">
+                <div class="help-box">
+                    <span class="help-icon">?</span>
+                    <div><strong>Centro de ayuda</strong><small>Conoce el sistema</small></div>
+                </div>
+                <button class="profile-row">
+                    <span class="avatar">MR</span>
+                    <span><strong>Marina Rojas</strong><small>Super administradora</small></span>
+                    <span class="more">•••</span>
+                </button>
+            </div>
         </aside>
         <!-- Area central con encabezado, vistas y acciones del usuario. -->
         <main class="main-content">
             <!-- Busqueda general, acceso al portal movil y notificaciones. -->
-            <header class="topbar"><div class="mobile-brand"><img src="estilo/logo-renato.svg" alt="Bienes y Negocios Renato"></div>
+            <header class="topbar">
+                <div class="mobile-brand"><img src="estilo/Logo_bienes.jpeg" alt="Bienes y Negocios Renato"></div>
                 <div class="breadcrumbs"><span>Bienes y Negocios Renato</span><b>/</b><strong id="breadcrumb-title">Resumen</strong></div>
-                <div class="topbar-actions"><label class="search-box"><span>⌕</span>
-                    <input id="global-search" type="search" placeholder="Buscar en el sistema..." aria-label="Buscar"></label>
-                    <div class="notification-wrapper">                    <a class="text-button portal-shortcut" href="/portal-inquilinos.html">Portal de inquilinos</a>
-                    <button class="icon-button" title="Notificaciones" aria-label="Notificaciones" aria-haspopup="true" aria-expanded="false">♢<span class="notification-count" hidden></span></button>
-                        <section class="notification-menu" id="notification-menu" aria-label="Notificaciones recientes" hidden><h2>Notificaciones</h2><div id="notification-list"><p class="notification-empty">Cargando...</p></div></section></div>
-                    <button class="icon-button" title="Mi perfil" aria-label="Mi perfil"><span class="avatar avatar-tiny">MR</span></button></div></header>
+                <div class="topbar-actions">
+                    <label class="search-box">
+                        <span>⌕</span>
+                        <input id="global-search" type="search" placeholder="Buscar en el sistema..." aria-label="Buscar">
+                    </label>
+                    <div class="notification-wrapper">
+                        <a class="text-button portal-shortcut" href="/portal-inquilinos.html">Portal de inquilinos</a>
+                        <button class="icon-button" title="Notificaciones" aria-label="Notificaciones" aria-haspopup="true"
+                            aria-expanded="false">♢<span class="notification-count" hidden></span></button>
+                        <section class="notification-menu" id="notification-menu" aria-label="Notificaciones recientes" hidden>
+                            <h2>Notificaciones</h2>
+                            <div id="notification-list">
+                                <p class="notification-empty">Cargando...</p>
+                            </div>
+                        </section>
+                    </div>
+                    <button class="icon-button" title="Mi perfil" aria-label="Mi perfil">
+                        <span class="avatar avatar-tiny">MR</span>
+                    </button>
+                </div>
+            </header>
             <div class="content-wrap">
                 <!-- Resumen de indicadores, alertas, propiedades y actividad reciente. -->
                 <section class="view active-view" id="dashboard-view">
-                    <div class="page-intro"><div><p class="eyebrow">Jueves, 12 de junio de 2025</p><h1>Buenos dias <span>
+                    <div class="page-intro">
+                        <div>
+                            <p class="eyebrow">Jueves, 12 de junio de 2025</p>
+                            <h1>Buenos dias <span>
 
-                    </span></h1><p class="intro-copy">Esto es lo que esta pasando en tu operacion hoy.</p></div><button class="primary-button" id="new-property"><span>＋</span> Nueva propiedad</button></div>
-                    <div class="metric-grid"><article class="metric-card accent-coral"><div class="metric-top"><span class="metric-label">Propiedades disponibles</span><span class="metric-icon">▦</span></div>
-                        <strong>—</strong><div class="metric-foot">Esperando datos...</div></article><article class="metric-card accent-teal"><div class="metric-top"><span class="metric-label">Clientes registrados</span><span class="metric-icon">♧</span></div><strong>—</strong><div class="metric-foot">Esperando datos...</div>
-                        </article><article class="metric-card accent-yellow"><div class="metric-top"><span class="metric-label">Visitas esta semana</span><span class="metric-icon">◷</span></div><strong>—</strong><div class="metric-foot">Esperando datos...</div></article><article class="metric-card accent-ink">
-                            <div class="metric-top"><span class="metric-label">Ingresos del mes</span>
-                        <span class="metric-icon">$</span></div><strong>—</strong><div class="metric-foot">Esperando datos...</div></article></div>
-                    <section class="panel follow-up-panel" aria-labelledby="follow-up-title"><div class="panel-heading"><div><h2 id="follow-up-title">Alertas de seguimiento</h2><p>Prioridades basadas en los registros actuales</p></div></div><div class="follow-up-alerts" id="follow-up-alerts" aria-live="polite"><p class="empty-records">Cargando alertas...</p></div></section>
-                    <div class="dashboard-grid"><section class="panel property-panel"><div class="panel-heading"><div><h2>Propiedades recientes</h2><p>Últimos registros agregados al inventario</p>
-                    </div><button class="text-button" data-view="properties">Ver todas <span>→</span></button></div><div class="property-table-wrap">
-                        <table class="data-table" id="property-table"><thead><tr><th>Propiedad</th><th>Tipo</th><th>Estado</th><th>Precio</th><th>Responsable</th>
-                            <th></th></tr></thead><tbody><tr><td colspan="6" class="empty-records">Cargando propiedades...</td></tr></tbody></table></div></section><section class="panel activity-panel"><div class="panel-heading"><div><h2>Actividad reciente</h2><p>Movimientos registrados en el sistema</p></div></div><div class="activity-list"><p class="empty-records">Cargando actividad...</p></div></section></div>
+                            </span></h1>
+                            <p class="intro-copy">Esto es lo que esta pasando en tu operacion hoy.</p>
+                        </div>
+                        <button class="primary-button" id="new-property"><span>＋</span> Nueva propiedad</button>
+                    </div>
+                    <div class="metric-grid">
+                        <article class="metric-card accent-coral">
+                            <div class="metric-top">
+                                <span class="metric-label">Propiedades disponibles</span>
+                                <span class="metric-icon">▦</span>
+                            </div>
+                            <strong>—</strong>
+                            <div class="metric-foot">Esperando datos...</div>
+                        </article>
+                        <article class="metric-card accent-teal">
+                            <div class="metric-top">
+                                <span class="metric-label">Clientes registrados</span>
+                                <span class="metric-icon">♧</span>
+                            </div>
+                            <strong>—</strong>
+                            <div class="metric-foot">Esperando datos...</div>
+                        </article>
+                        <article class="metric-card accent-yellow">
+                            <div class="metric-top">
+                                <span class="metric-label">Visitas esta semana</span>
+                                <span class="metric-icon">◷</span>
+                            </div>
+                            <strong>—</strong>
+                            <div class="metric-foot">Esperando datos...</div>
+                        </article>
+                        <article class="metric-card accent-ink">
+                            <div class="metric-top">
+                                <span class="metric-label">Ingresos del mes</span>
+                                <span class="metric-icon">$</span>
+                            </div>
+                            <strong>—</strong>
+                            <div class="metric-foot">Esperando datos...</div>
+                        </article>
+                    </div>
+                    <section class="panel follow-up-panel" aria-labelledby="follow-up-title">
+                        <div class="panel-heading">
+                            <div>
+                                <h2 id="follow-up-title">Alertas de seguimiento</h2>
+                                <p>Prioridades basadas en los registros actuales</p>
+                            </div>
+                        </div>
+                        <div class="follow-up-alerts" id="follow-up-alerts" aria-live="polite">
+                            <p class="empty-records">Cargando alertas...</p>
+                        </div>
+                    </section>
+                    <div class="dashboard-grid">
+                        <section class="panel property-panel">
+                            <div class="panel-heading">
+                                <div>
+                                    <h2>Propiedades recientes</h2>
+                                    <p>Últimos registros agregados al inventario</p>
+                                </div>
+                                <button class="text-button" data-view="properties">Ver todas <span>→</span></button>
+                            </div>
+                            <div class="property-table-wrap">
+                                <table class="data-table" id="property-table">
+                                    <thead>
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>Propiedad</th>
+                                            <th>Tipo</th>
+                                            <th>Estado</th>
+                                            <th>Precio</th>
+                                            <th>Responsable</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td colspan="7" class="empty-records">Cargando propiedades...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
+                        <section class="panel activity-panel">
+                            <div class="panel-heading activity-panel-heading">
+                                <div>
+                                    <h2>Actividad reciente</h2>
+                                    <p>Movimientos registrados en el sistema</p>
+                                </div>
+                                <div class="activity-legend" aria-label="Clave de acciones">
+                                    <span><strong>C</strong> Crear</span>
+                                    <span><strong>A</strong> Actualizar</span>
+                                    <span><strong>E</strong> Eliminar</span>
+                                    <span><strong>Ar</strong> Archivar</span>
+                                    <span><strong>Ej</strong> Ejecutar</span>
+                                    <span><strong>Ca</strong> Cargar</span>
+                                </div>
+                            </div>
+                            <div class="activity-list">
+                                <p class="empty-records">Cargando actividad...</p>
+                            </div>
+                        </section>
+                    </div>
                 </section>
                 <!-- Vista del inventario y catalogo de propiedades. -->
-                <section class="view placeholder-view" id="properties-view"><div class="page-intro"><div><p class="eyebrow">Modulo 01</p><h1>Propiedades</h1>
-                    <p class="intro-copy">Administra el inventario, disponibilidad y documentacion de cada inmueble.</p></div><button class="primary-button"><span>＋</span> Nueva propiedad</button></div><div class="module-hero"><div class="module-hero-icon coral-bg">▦</div><div><h2>Catalogo de propiedades</h2><p>Componente central para registrar casas, departamentos, oficinas y terrenos. Incluye filtros por tipo, estado, ubicacion y responsable.</p></div></div><div class="mini-stat-grid"><div><small>Total en inventario</small><strong>156</strong></div><div><small>Disponibles</small><strong>128</strong></div><div><small>En proceso</small><strong>18</strong></div><div><small>Vendidas / rentadas</small><strong>10</strong></div></div></section>
-                <section class="view placeholder-view" id="clients-view"><div class="page-intro"><div><p class="eyebrow">Modulo 02</p><h1>Clientes</h1><p class="intro-copy">Centraliza clientes potenciales, propietarios y compradores en un solo lugar.</p></div><button class="primary-button" data-open-form="contract"><span>＋</span> Registrar venta</button></div><div class="module-hero"><div class="module-hero-icon teal-bg">♧</div><div><h2>Gestión de clientes y clientes potenciales</h2><p>Registra al cliente junto con la venta o renta y descarga el formato de contrato. El cliente potencial se marca como convertido al registrar la operación si coincide el correo.</p></div></div><div class="mini-stat-grid"><div><small>Clientes activos</small><strong>246</strong></div><div><small>Nuevos clientes potenciales</small><strong>34</strong></div><div><small>Propietarios</small><strong>89</strong></div><div><small>Conversión mensual</small><strong>18.4%</strong></div></div></section>
+                <section class="view placeholder-view" id="properties-view">
+                    <div class="page-intro">
+                        <div>
+                            <p class="eyebrow">Modulo 01</p>
+                            <h1>Propiedades</h1>
+                            <p class="intro-copy">Administra el inventario, disponibilidad y documentacion de cada inmueble.</p>
+                        </div>
+                        <button class="primary-button"><span>＋</span> Nueva propiedad</button>
+                    </div>
+                    <div class="module-hero">
+                        <div class="module-hero-icon coral-bg">▦</div>
+                        <div>
+                            <h2>Catalogo de propiedades</h2>
+                            <p>Componente central para registrar casas, departamentos, oficinas y terrenos. Incluye filtros por tipo, estado, ubicacion y responsable.</p>
+                        </div>
+                    </div>
+                    <div class="mini-stat-grid">
+                        <div><small>Total en inventario</small><strong>0</strong></div>
+                        <div><small>Disponibles</small><strong>0</strong></div>
+                        <div><small>En proceso</small><strong>0</strong></div>
+                        <div><small>Vendidas / rentadas</small><strong>0</strong></div>
+                    </div>
+                </section>
+                <section class="view placeholder-view" id="clients-view">
+                    <div class="page-intro">
+                        <div>
+                            <p class="eyebrow">Modulo 02</p>
+                            <h1>Clientes</h1>
+                        </div>
+                        <div class="page-intro-actions">
+                            <button class="outline-button" data-open-form="contract"><span>＋</span> Registrar venta</button>
+                            <button class="primary-button" data-open-form="client"><span>＋</span> Agregar cliente</button>
+                        </div>
+                    </div>
+                    <div class="mini-stat-grid client-kpis">
+                        <div><span class="client-kpi-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"></circle><path d="M5 20v-1a7 7 0 0 1 14 0v1"></path></svg></span><span><small>Clientes registrados</small><strong>0</strong></span></div>
+                        <div><span class="client-kpi-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"></circle><path d="M3 20v-1a6 6 0 0 1 12 0v1M18 7v6M15 10h6"></path></svg></span><span><small>Nuevos clientes potenciales</small><strong>0</strong></span></div>
+                        <div><span class="client-kpi-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"></circle><path d="M3 20v-1a6 6 0 0 1 12 0v1M17 14l2 2 3-4"></path></svg></span><span><small>Clientes potenciales activos</small><strong>0</strong></span></div>
+                        <div><span class="client-kpi-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 19h16M6 16l4-4 3 3 5-7M14 8h4v4"></path></svg></span><span><small>Conversión</small><strong>0%</strong></span></div>
+                    </div>
+                    <div class="client-tabs" role="tablist" aria-label="Vistas de clientes">
+                        <button type="button" role="tab" id="client-tab-todos" data-client-tab="todos" aria-controls="client-panel-clients" aria-selected="true">Todos</button>
+                        <button type="button" role="tab" id="client-tab-activos" data-client-tab="activos" aria-controls="client-panel-clients" aria-selected="false" tabindex="-1">Activos</button>
+                        <button type="button" role="tab" id="client-tab-inactivos" data-client-tab="inactivos" aria-controls="client-panel-clients" aria-selected="false" tabindex="-1">Inactivos</button>
+                        <button type="button" role="tab" id="client-tab-potenciales" data-client-tab="potenciales" aria-controls="client-panel-leads" aria-selected="false" tabindex="-1">Potenciales</button>
+                    </div>
+                    <div data-clients-tables></div>
+                </section>
                 <!-- Vistas comerciales para coincidencias y agenda de visitas. -->
-                <section class="view placeholder-view" id="matching-view"><div class="page-intro"><div><p class="eyebrow">Modulo 03</p><h1>Motor de coincidencias</h1><p class="intro-copy">Conecta automaticamente las preferencias de clientes con el inventario disponible.</p></div></div><div class="module-hero"><div class="module-hero-icon coral-bg">✧</div><div><h2>Matching y recomendaciones</h2><p>Algoritmo de cruzamiento por zona, presupuesto, recamaras y amenidades. Genera alertas para el agente cuando entra una propiedad afin.</p></div></div><div class="mini-stat-grid"><div><small>Coincidencias hoy</small><strong>42</strong></div><div><small>Alertas enviadas</small><strong>18</strong></div><div><small>Clientes con preferencias</small><strong>196</strong></div><div><small>Precision estimada</small><strong>87%</strong></div></div></section>
-                <section class="view placeholder-view" id="visits-view"><div class="page-intro"><div><p class="eyebrow">Modulo 04</p><h1>Visitas</h1><p class="intro-copy">Organiza la agenda del equipo y mide cada oportunidad comercial.</p></div><button class="primary-button"><span>＋</span> Agendar visita</button></div><div class="module-hero"><div class="module-hero-icon yellow-bg">◷</div><div><h2>Agenda y seguimiento de visitas</h2><p>Calendario compartido con recordatorios, asignacion de asesores, estado de visita y comentarios del cliente.</p></div></div><div class="mini-stat-grid"><div><small>Visitas esta semana</small><strong>32</strong></div><div><small>Hoy</small><strong>8</strong></div><div><small>Confirmadas</small><strong>24</strong></div><div><small>Tasa de asistencia</small><strong>91%</strong></div></div></section>
-                <section class="view placeholder-view" id="contracts-view"><div class="page-intro"><div><p class="eyebrow">Modulo 05</p><h1>Clientes y contratos</h1><p class="intro-copy">Registra al cliente, el lote y los datos de la operación en un formato descargable.</p></div><button class="primary-button" data-open-form="contract"><span>＋</span> Nuevo cliente y contrato</button></div><div class="module-hero"><div class="module-hero-icon ink-bg">▤</div><div><h2>Operaciones inmobiliarias</h2><p>Guarda ventas y rentas, genera un formato imprimible con la información de las partes y consulta la ubicación de cada lote.</p></div></div><div class="mini-stat-grid"><div><small>Contratos registrados</small><strong>0</strong></div><div><small>Ventas</small><strong>0</strong></div><div><small>Rentas</small><strong>0</strong></div><div><small>Contratos de este mes</small><strong>0</strong></div></div></section>
+                <section class="view placeholder-view" id="matching-view">
+                    <div class="page-intro">
+                        <div>
+                            <p class="eyebrow">Modulo 03</p>
+                            <h1>Motor de coincidencias</h1>
+                            <p class="intro-copy">Conecta automaticamente las preferencias de clientes con el inventario disponible.</p>
+                        </div>
+                    </div>
+                    <div class="module-hero">
+                        <div class="module-hero-icon coral-bg">✧</div>
+                        <div>
+                            <h2>Matching y recomendaciones</h2>
+                            <p>Algoritmo de cruzamiento por zona, presupuesto, recamaras y amenidades. Genera alertas para el agente cuando entra una propiedad afin.</p>
+                        </div>
+                    </div>
+                    <div class="mini-stat-grid">
+                        <div><small>Coincidencias hoy</small><strong>42</strong></div>
+                        <div><small>Alertas enviadas</small><strong>18</strong></div>
+                        <div><small>Clientes con preferencias</small><strong>196</strong></div>
+                        <div><small>Precision estimada</small><strong>87%</strong></div>
+                    </div>
+                </section>
+                <section class="view placeholder-view" id="visits-view">
+                    <div class="page-intro">
+                        <div>
+                            <p class="eyebrow">Modulo 04</p>
+                            <h1>Visitas</h1>
+                            <p class="intro-copy">Organiza la agenda del equipo y mide cada oportunidad comercial.</p>
+                        </div>
+                        <button class="primary-button"><span>＋</span> Agendar visita</button>
+                    </div>
+                    <div class="module-hero">
+                        <div class="module-hero-icon yellow-bg">◷</div>
+                        <div>
+                            <h2>Agenda y seguimiento de visitas</h2>
+                            <p>Calendario compartido con recordatorios, asignacion de asesores, estado de visita y comentarios del cliente.</p>
+                        </div>
+                    </div>
+                    <div class="mini-stat-grid">
+                        <div><small>Visitas esta semana</small><strong>32</strong></div>
+                        <div><small>Hoy</small><strong>8</strong></div>
+                        <div><small>Confirmadas</small><strong>24</strong></div>
+                        <div><small>Tasa de asistencia</small><strong>91%</strong></div>
+                    </div>
+                </section>
+                <section class="view placeholder-view" id="contracts-view">
+                    <div class="page-intro">
+                        <div>
+                            <p class="eyebrow">Modulo 05</p>
+                            <h1>Clientes y contratos</h1>
+                            <p class="intro-copy">Registra al cliente, el lote y los datos de la operación en un formato descargable.</p>
+                        </div>
+                        <button class="primary-button" data-open-form="contract"><span>＋</span> Nuevo cliente y contrato</button>
+                    </div>
+                    <div class="module-hero">
+                        <div class="module-hero-icon ink-bg">▤</div>
+                        <div>
+                            <h2>Operaciones inmobiliarias</h2>
+                            <p>Guarda ventas y rentas, genera un formato imprimible con la información de las partes y consulta la ubicación de cada lote.</p>
+                        </div>
+                    </div>
+                    <div class="mini-stat-grid">
+                        <div><small>Contratos registrados</small><strong>0</strong></div>
+                        <div><small>Ventas</small><strong>0</strong></div>
+                        <div><small>Rentas</small><strong>0</strong></div>
+                        <div><small>Contratos de este mes</small><strong>0</strong></div>
+                    </div>
+                </section>
                 <!-- Vistas para documentos legales y control financiero. -->
-                <section class="view placeholder-view" id="legal-view"><div class="page-intro"><div><p class="eyebrow">Modulo 06</p><h1>Legal y expediente digital</h1><p class="intro-copy">Protege la operacion con documentacion completa y validada antes de publicar.</p></div><button class="outline-button" data-open-form="document">⇧ Subir documento</button></div><div class="module-hero"><div class="module-hero-icon yellow-bg">▧</div><div><h2>Expediente juridico seguro</h2><p>Almacenamiento encriptado de escrituras, predial, identificaciones y libertad de gravamen. Checklist previo a publicacion y firma electronica.</p></div></div><div class="mini-stat-grid"><div><small>Expedientes completos</small><strong>112</strong></div><div><small>Por validar</small><strong>9</strong></div><div><small>Firmas pendientes</small><strong>4</strong></div><div><small>Documentos seguros</small><strong>486</strong></div></div></section>
-                <section class="view placeholder-view" id="finance-view"><div class="page-intro"><div><p class="eyebrow">Modulo 07</p><h1>Comisiones y finanzas</h1><p class="intro-copy">Automatiza la distribucion financiera de cada cierre de operacion.</p></div><button class="outline-button">⇩ Exportar liquidaciones</button></div><div class="module-hero"><div class="module-hero-icon coral-bg">$</div><div><h2>Liquidaciones y comisiones</h2><p>Calcula la participacion del agente captador, agente vendedor y agencia. Registra pagos recibidos e historial de liquidaciones.</p></div></div><div class="mini-stat-grid"><div><small>Comisiones del mes</small><strong>$84,520</strong></div><div><small>Por liquidar</small><strong>$12,480</strong></div><div><small>Cierres del mes</small><strong>18</strong></div><div><small>Co-brokerages</small><strong>5</strong></div></div></section>
-                <section class="view placeholder-view" id="rents-view"><div class="page-intro"><div><p class="eyebrow">Modulo 08 · Pro</p><h1>Cobranza y renovaciones</h1><p class="intro-copy">Da seguimiento a pagos, adeudos y contratos de renta próximos a vencer.</p></div><button class="primary-button"><span>＋</span> Registrar cobro</button></div><div class="module-hero"><div class="module-hero-icon teal-bg">⌂</div><div><h2>Control de pagos y vencimientos</h2><p>Consulta adeudos, próximos cobros, recibos pagados y contratos que requieren contacto para renovar o finalizar.</p></div></div><div class="mini-stat-grid"><div><small>Contratos activos</small><strong>—</strong></div><div><small>Cobros recibidos</small><strong>—</strong></div><div><small>Adeudos vencidos</small><strong>—</strong></div><div><small>Saldo pendiente</small><strong>—</strong></div></div><div class="collection-overview" data-collections-overview></div></section>
-                <section class="view placeholder-view" id="maintenance-view"><div class="page-intro"><div><p class="eyebrow">Modulo 09</p><h1>Mantenimiento y solicitudes</h1><p class="intro-copy">Registra reparaciones y da seguimiento a responsables, prioridad y costos.</p></div><button class="primary-button" data-open-form="maintenance"><span>＋</span> Nueva solicitud</button></div><div class="module-hero"><div class="module-hero-icon yellow-bg">⌁</div><div><h2>Atención de propiedades</h2><p>Vincula solicitudes a una propiedad o renta, asigna responsables y actualiza el estado hasta su cierre.</p></div></div><div class="mini-stat-grid"><div><small>Solicitudes abiertas</small><strong>—</strong></div><div><small>Urgentes</small><strong>—</strong></div><div><small>En proceso</small><strong>—</strong></div><div><small>Costo final registrado</small><strong>—</strong></div></div></section>
+                <section class="view placeholder-view" id="legal-view">
+                    <div class="page-intro">
+                        <div>
+                            <p class="eyebrow">Modulo 06</p>
+                            <h1>Legal y expediente digital</h1>
+                            <p class="intro-copy">Protege la operacion con documentacion completa y validada antes de publicar.</p>
+                        </div>
+                        <button class="outline-button" data-open-form="document">⇧ Subir documento</button>
+                    </div>
+                    <div class="module-hero">
+                        <div class="module-hero-icon yellow-bg">▧</div>
+                        <div>
+                            <h2>Expediente juridico seguro</h2>
+                            <p>Almacenamiento encriptado de escrituras, predial, identificaciones y libertad de gravamen. Checklist previo a publicacion y firma electronica.</p>
+                        </div>
+                    </div>
+                    <div class="mini-stat-grid">
+                        <div><small>Expedientes completos</small><strong>112</strong></div>
+                        <div><small>Por validar</small><strong>9</strong></div>
+                        <div><small>Firmas pendientes</small><strong>4</strong></div>
+                        <div><small>Documentos seguros</small><strong>486</strong></div>
+                    </div>
+                </section>
+                <section class="view placeholder-view" id="finance-view">
+                    <div class="page-intro">
+                        <div>
+                            <p class="eyebrow">Modulo 07</p>
+                            <h1>Comisiones y finanzas</h1>
+                            <p class="intro-copy">Automatiza la distribucion financiera de cada cierre de operacion.</p>
+                        </div>
+                        <button class="outline-button">⇩ Exportar liquidaciones</button>
+                    </div>
+                    <div class="module-hero">
+                        <div class="module-hero-icon coral-bg">$</div>
+                        <div>
+                            <h2>Liquidaciones y comisiones</h2>
+                            <p>Registra la comisión del vendedor y cliente por el 5 % del valor de la propiedad, y consulta su estado de pago.</p>
+                        </div>
+                    </div>
+                    <div class="mini-stat-grid">
+                        <div><small>Comisiones del mes</small><strong>$84,520</strong></div>
+                        <div><small>Por liquidar</small><strong>$12,480</strong></div>
+                        <div><small>Cierres del mes</small><strong>18</strong></div>
+                        <div><small>Co-brokerages</small><strong>5</strong></div>
+                    </div>
+                </section>
+                <section class="view placeholder-view" id="rents-view">
+                    <div class="page-intro">
+                        <div>
+                            <p class="eyebrow">Modulo 08 · Pro</p>
+                            <h1>Cobranza y renovaciones</h1>
+                            <p class="intro-copy">Da seguimiento a pagos, adeudos y contratos de renta próximos a vencer.</p>
+                        </div>
+                        <button class="primary-button"><span>＋</span> Registrar cobro</button>
+                    </div>
+                    <div class="module-hero">
+                        <div class="module-hero-icon teal-bg">⌂</div>
+                        <div>
+                            <h2>Control de pagos y vencimientos</h2>
+                            <p>Consulta adeudos, próximos cobros, recibos pagados y contratos que requieren contacto para renovar o finalizar.</p>
+                        </div>
+                    </div>
+                    <div class="mini-stat-grid">
+                        <div><small>Contratos activos</small><strong>—</strong></div>
+                        <div><small>Cobros recibidos</small><strong>—</strong></div>
+                        <div><small>Adeudos vencidos</small><strong>—</strong></div>
+                        <div><small>Saldo pendiente</small><strong>—</strong></div>
+                    </div>
+                    <div class="collection-overview" data-collections-overview></div>
+                </section>
+                <section class="view placeholder-view" id="maintenance-view">
+                    <div class="page-intro">
+                        <div>
+                            <p class="eyebrow">Modulo 09</p>
+                            <h1>Mantenimiento y solicitudes</h1>
+                            <p class="intro-copy">Registra reparaciones y da seguimiento a responsables, prioridad y costos.</p>
+                        </div>
+                        <button class="primary-button" data-open-form="maintenance"><span>＋</span> Nueva solicitud</button>
+                    </div>
+                    <div class="module-hero">
+                        <div class="module-hero-icon yellow-bg">⌁</div>
+                        <div>
+                            <h2>Atención de propiedades</h2>
+                            <p>Vincula solicitudes a una propiedad o renta, asigna responsables y actualiza el estado hasta su cierre.</p>
+                        </div>
+                    </div>
+                    <div class="mini-stat-grid">
+                        <div><small>Solicitudes abiertas</small><strong>—</strong></div>
+                        <div><small>Urgentes</small><strong>—</strong></div>
+                        <div><small>En proceso</small><strong>—</strong></div>
+                        <div><small>Costo final registrado</small><strong>—</strong></div>
+                    </div>
+                </section>
                 <!-- Vistas para administracion del equipo y consultas de resultados. -->
-                <section class="view placeholder-view" id="sellers-view"><div class="page-intro"><div><p class="eyebrow">Equipo comercial</p><h1>Vendedores</h1><p class="intro-copy">Administra las cuentas del equipo que atiende clientes y operaciones.</p></div><button class="primary-button" data-open-form="seller"><span>＋</span> Agregar vendedor</button></div><div class="module-hero"><div class="module-hero-icon teal-bg">◎</div><div><h2>Registro de vendedores</h2><p>Registra vendedores y consulta su actividad comercial. Solo los administradores pueden modificar estas cuentas.</p></div></div><div class="mini-stat-grid"><div><small>Vendedores registrados</small><strong>0</strong></div><div><small>Vendedores activos</small><strong>0</strong></div><div><small>Comisiones del mes</small><strong>$0</strong></div><div><small>Rol requerido</small><strong>Administrador</strong></div></div></section>
-                <section class="view placeholder-view" id="users-view"><div class="page-intro"><div><p class="eyebrow">Administración del sistema</p><h1>Usuarios y administradores</h1><p class="intro-copy">Crea cuentas, asigna funciones y administra los permisos de acceso.</p></div><button class="primary-button" data-open-form="user"><span>＋</span> Agregar usuario</button></div><div class="module-hero"><div class="module-hero-icon ink-bg">◉</div><div><h2>Control de usuarios</h2><p>Registra usuarios con acceso básico o administradores con control completo del sistema.</p></div></div><div class="mini-stat-grid"><div><small>Usuarios registrados</small><strong>0</strong></div><div><small>Administradores</small><strong>0</strong></div><div><small>Usuarios activos</small><strong>0</strong></div><div><small>Rol requerido</small><strong>Administrador</strong></div></div></section>
-                <section class="view placeholder-view" id="reports-view"><div class="page-intro"><div><p class="eyebrow">Modulo 06</p><h1>Reportes</h1><p class="intro-copy">Convierte la operacion diaria en decisiones con indicadores claros.</p></div><button class="outline-button">⇩ Descargar reporte</button></div><div class="module-hero"><div class="module-hero-icon coral-bg">◒</div><div><h2>Panel de analitica</h2><p>Reportes de inventario, conversión de clientes potenciales, rendimiento por asesor, ingresos y ocupación.</p></div></div><div class="mini-stat-grid"><div><small>Reportes disponibles</small><strong>12</strong></div><div><small>Este trimestre</small><strong>48</strong></div><div><small>Indicadores activos</small><strong>26</strong></div><div><small>Ultima actualizacion</small><strong>Hoy</strong></div></div></section>
+                <section class="view placeholder-view" id="sellers-view">
+                    <div class="page-intro">
+                        <div>
+                            <p class="eyebrow">Equipo comercial</p>
+                            <h1>Vendedores</h1>
+                            <p class="intro-copy">Administra las cuentas del equipo que atiende clientes y operaciones.</p>
+                        </div>
+                        <button class="primary-button" data-open-form="seller"><span>＋</span> Agregar vendedor</button>
+                    </div>
+                    <div class="module-hero">
+                        <div class="module-hero-icon teal-bg">◎</div>
+                        <div>
+                            <h2>Registro de vendedores</h2>
+                            <p>Registra vendedores y consulta su actividad comercial. Solo los administradores pueden modificar estas cuentas.</p>
+                        </div>
+                    </div>
+                    <div class="mini-stat-grid">
+                        <div><small>Vendedores registrados</small><strong>0</strong></div>
+                        <div><small>Vendedores activos</small><strong>0</strong></div>
+                        <div><small>Comisiones del mes</small><strong>$0</strong></div>
+                        <div><small>Rol requerido</small><strong>Administrador</strong></div>
+                    </div>
+                </section>
+                <section class="view placeholder-view" id="users-view">
+                    <div class="page-intro">
+                        <div>
+                            <p class="eyebrow">Administración del sistema</p>
+                            <h1>Usuarios y administradores</h1>
+                            <p class="intro-copy">Crea cuentas, asigna funciones y administra los permisos de acceso.</p>
+                        </div>
+                        <button class="primary-button" data-open-form="user"><span>＋</span> Agregar usuario</button>
+                    </div>
+                    <div class="module-hero">
+                        <div class="module-hero-icon ink-bg">◉</div>
+                        <div>
+                            <h2>Control de usuarios</h2>
+                            <p>Registra usuarios con acceso básico o administradores con control completo del sistema.</p>
+                        </div>
+                    </div>
+                    <div class="mini-stat-grid">
+                        <div><small>Usuarios registrados</small><strong>0</strong></div>
+                        <div><small>Administradores</small><strong>0</strong></div>
+                        <div><small>Usuarios activos</small><strong>0</strong></div>
+                        <div><small>Rol requerido</small><strong>Administrador</strong></div>
+                    </div>
+                </section>
+                <section class="view placeholder-view" id="reports-view">
+                    <div class="page-intro">
+                        <div>
+                            <p class="eyebrow">Modulo 06</p>
+                            <h1>Reportes</h1>
+                            <p class="intro-copy">Convierte la operacion diaria en decisiones con indicadores claros.</p>
+                        </div>
+                        <div class="page-intro-actions">
+                            <button class="primary-button" data-action="download-pdf-report">📄 Descargar reporte (PDF)</button>
+                            <button class="outline-button" data-action="download-csv-report">⇩ Exportar CSV</button>
+                        </div>
+                    </div>
+                    <div class="module-hero">
+                        <div class="module-hero-icon coral-bg">◒</div>
+                        <div>
+                            <h2>Panel de analitica</h2>
+                            <p>Reportes de inventario, conversión de clientes potenciales, rendimiento por asesor, ingresos y ocupación.</p>
+                        </div>
+                    </div>
+                    <div class="mini-stat-grid">
+                        <div><small>Reportes disponibles</small><strong>12</strong></div>
+                        <div><small>Este trimestre</small><strong>48</strong></div>
+                        <div><small>Indicadores activos</small><strong>26</strong></div>
+                        <div><small>Ultima actualizacion</small><strong>Hoy</strong></div>
+                    </div>
+                </section>
             </div>
         </main>
     </div>
     <!-- Formulario de autenticacion para proteger el panel administrativo. -->
     <div class="auth-overlay" id="auth-overlay" hidden>
         <form class="auth-card" id="login-form">
-            <img class="auth-logo" src="estilo/logo-renato.svg" alt="Bienes y Negocios Renato">
+            <img class="auth-logo" src="estilo/Logo_bienes.jpeg" alt="Bienes y Negocios Renato">
             <p class="eyebrow">Acceso seguro</p>
             <h1>Bienvenido</h1>
             <p class="intro-copy">Inicia sesion para consultar tu operacion inmobiliaria.</p>
             <label for="login-email">Correo electronico</label>
-            <input id="login-email" name="correo" type="email" autocomplete="email" required>
+            <input id="login-email" name="correo" type="email" maxlength="254" autocomplete="email" required>
             <label for="login-password">Contrasena</label>
             <input id="login-password" name="contrasena" type="password" autocomplete="current-password" required>
             <p class="form-error" id="login-error" role="alert"></p>
             <button class="primary-button" type="submit">Iniciar sesion</button>
+            <a class="auth-portal-link" href="/portal.html">Ir al portal público</a>
         </form>
     </div>
     <div class="toast" id="toast">Vista actualizada</div>
-    <div class="view-loading" id="view-loading" aria-hidden="true"><span class="loading-spinner"></span><span>Cargando vista</span></div>
-    <script src="js/cruds/main.js?v=20"></script>
+    <div class="view-loading" id="view-loading" aria-hidden="true"><span class="loading-spinner"></span><span id="loading-text">Cargando vista</span></div>
+    <script src="js/libs/jspdf.umd.min.js"></script>
+    <script src="js/libs/jspdf.plugin.autotable.min.js"></script>
+    <script src="js/cruds/select-search.js?v=5"></script>
+    <script src="js/cruds/main.js?v=43"></script>
     <script>
         // Prepara las referencias compartidas para la navegacion y el feedback.
         const navItems = document.querySelectorAll('[data-view]');
         const views = document.querySelectorAll('.view');
         const breadcrumb = document.getElementById('breadcrumb-title');
         const toast = document.getElementById('toast');
-        const titles = { dashboard: 'Resumen', properties: 'Inventario y propiedades', clients: 'Clientes', matching: 'Motor de coincidencias', visits: 'Agenda y citas', legal: 'Legal y expediente', contracts: 'Clientes y contratos', finance: 'Comisiones y finanzas', rents: 'Cobranza y renovaciones', maintenance: 'Mantenimiento y solicitudes', sellers: 'Vendedores', users: 'Usuarios y administradores', reports: 'Reportes' };
+        const titles = {
+            dashboard: 'Resumen',
+            properties: 'Inventario y propiedades',
+            clients: 'Clientes',
+            matching: 'Motor de coincidencias',
+            visits: 'Agenda y citas',
+            legal: 'Legal y expediente',
+            contracts: 'Clientes y contratos',
+            finance: 'Comisiones y finanzas',
+            rents: 'Cobranza y renovaciones',
+            maintenance: 'Mantenimiento y solicitudes',
+            sellers: 'Vendedores',
+            users: 'Usuarios y administradores',
+            reports: 'Reportes'
+        };
         let viewTransitionTimer;
         // Activa la vista elegida, sincroniza el menu y actualiza el encabezado.
         function showView(viewName) {
@@ -119,7 +532,9 @@
             loader.classList.add('visible');
             clearTimeout(viewTransitionTimer);
             views.forEach(view => view.classList.toggle('active-view', view.id === viewName + '-view'));
-            document.querySelectorAll('.nav-item').forEach(item => item.classList.toggle('active', item.dataset.view === viewName));
+            document.querySelectorAll('.nav-item').forEach(item =>
+                item.classList.toggle('active', item.dataset.view === viewName)
+            );
             breadcrumb.textContent = titles[viewName] || viewName;
             window.scrollTo({ top: 0, behavior: 'smooth' });
             viewTransitionTimer = setTimeout(() => loader.classList.remove('visible'), 280);
@@ -128,10 +543,19 @@
         navItems.forEach(item => item.addEventListener('click', () => showView(item.dataset.view)));
         document.getElementById('global-search').addEventListener('input', event => {
             const query = event.target.value.toLowerCase();
-            document.querySelectorAll('#property-table tbody tr').forEach(row => row.hidden = !row.textContent.toLowerCase().includes(query));
+            document.querySelectorAll('#property-table tbody tr').forEach(row => {
+                row.hidden = !row.textContent.toLowerCase().includes(query);
+            });
         });
-        document.querySelectorAll('.entity').forEach(item => item.addEventListener('click', () => { document.querySelectorAll('.entity').forEach(entity => entity.classList.remove('active')); item.classList.add('active'); }));
-        document.getElementById('new-property').addEventListener('click', () => { showView('properties'); toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 2200); });
+        document.querySelectorAll('.entity').forEach(item => item.addEventListener('click', () => {
+            document.querySelectorAll('.entity').forEach(entity => entity.classList.remove('active'));
+            item.classList.add('active');
+        }));
+        document.getElementById('new-property').addEventListener('click', () => {
+            showView('properties');
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 2200);
+        });
         document.querySelector('[data-view="clients"]').lastChild.textContent = ' Clientes';
         document.querySelectorAll('.eyebrow').forEach((element) => {
             if (/^Modulo/.test(element.textContent.trim())) element.textContent = element.textContent.replace(/^Modulo\s+\d+(?:\s+·\s+Pro)?/, '').trim() || 'Sección';
@@ -145,12 +569,11 @@
             phone.textContent = '3911772310';
             helpBox.append(phone);
         }
-        const profile = document.querySelector('.profile-row');
         const sessionMenu = document.createElement('div');
         sessionMenu.className = 'session-menu';
         sessionMenu.hidden = true;
-        sessionMenu.innerHTML = '<button type="button" data-session-action="suspend">Suspender sesión</button><button type="button" data-session-action="logout">Salir</button>';
-        profile?.parentElement.append(sessionMenu);
+        sessionMenu.innerHTML = '<a href="/portal.html">Ir al portal público</a><button type="button" data-session-action="suspend">Suspender sesión</button><button type="button" data-session-action="logout">Salir</button>';
+        document.body.append(sessionMenu);
     </script>
 </body>
 </html>

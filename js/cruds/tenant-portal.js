@@ -39,9 +39,20 @@ async function request(url, options = {}) {
 
 // Construye las secciones privadas de rentas, pagos, contratos y documentos.
 function renderAccount(data) {
-  const { client, rentals, contracts, payments, documents } = data;
+  const { client, rentals, contracts, payments, documents, reports } = data;
+  const activeRentals = rentals.filter((rental) => String(rental.estado).toLowerCase() === 'activa' && !rental.eliminado);
+  const rentalOptions = activeRentals.map((rental) => `
+    <option value="${escapeHtml(rental.id_renta)}">${escapeHtml(rental.propiedad)}</option>
+  `).join('');
+  const reportRows = reports.map((report) => `
+    <li><strong>${escapeHtml(report.titulo)}</strong>
+      <span>${escapeHtml(report.propiedad)} · ${escapeHtml(formatDate(report.creado_en))}</span>
+      <span>Prioridad: ${escapeHtml(report.prioridad)} · Estado: ${escapeHtml(report.estado.replaceAll('_', ' '))}</span>
+      <p class="tenant-report-description">${escapeHtml(report.descripcion)}</p>
+    </li>
+  `).join('');
   const paymentRows = payments.map((payment) => `
-    <tr><td>${escapeHtml(payment.propiedad)}</td><td>${escapeHtml(formatDate(payment.periodo))}</td>
+    <tr><td>${escapeHtml(payment.id_pago)}</td><td>${escapeHtml(payment.propiedad)}</td><td>${escapeHtml(formatDate(payment.periodo))}</td>
       <td>${escapeHtml(formatMoney(payment.monto))}</td><td>${escapeHtml(payment.estado)}</td>
       <td>${escapeHtml(payment.pagado_en ? formatDate(payment.pagado_en) : '—')}</td></tr>
   `).join('');
@@ -58,6 +69,7 @@ function renderAccount(data) {
     <li><strong>${escapeHtml(contract.tipo_operacion)} · ${escapeHtml(contract.propiedad)}</strong>
       <span>Registrado ${escapeHtml(formatDate(contract.fecha_contrato))}</span>
       <span>Vigencia: ${escapeHtml(formatDate(contract.fecha_inicio))} — ${escapeHtml(formatDate(contract.fecha_fin))}</span>
+      <button type="button" class="text-button" data-tenant-contract="${escapeHtml(contract.id_contrato)}">Descargar formato PDF</button>
     </li>
   `).join('');
   const documentRows = documents.map((documentRecord) => `
@@ -71,15 +83,36 @@ function renderAccount(data) {
     <section class="tenant-section"><h2>Mis rentas</h2>
       ${rentalCards ? `<div class="tenant-rentals">${rentalCards}</div>` : '<p class="portal-empty">No tienes rentas registradas en esta cuenta.</p>'}
     </section>
+    <section class="tenant-section">
+      <h2>Reportar un problema</h2>
+      <p class="tenant-section-intro">Cuéntanos qué sucede en tu propiedad. El equipo recibirá una notificación para dar seguimiento.</p>
+      ${activeRentals.length ? `
+        <form id="tenant-report-form" class="portal-form">
+          <label>Renta o propiedad<select name="id_renta" required><option value="">Selecciona una renta</option>${rentalOptions}</select></label>
+          <label>Asunto<input name="titulo" maxlength="180" required></label>
+          <label>Descripción<textarea name="descripcion" maxlength="2000" rows="4" required></textarea></label>
+          <label>Prioridad<select name="prioridad" required>
+            <option value="normal">Normal</option><option value="baja">Baja</option>
+            <option value="alta">Alta</option><option value="urgente">Urgente</option>
+          </select></label>
+          <p id="tenant-report-result" class="tenant-report-result" role="status" aria-live="polite"></p>
+          <button class="primary-button" type="submit">Enviar reporte</button>
+        </form>` : '<p class="portal-empty">Necesitas una renta activa para enviar un reporte.</p>'}
+    </section>
+    <section class="tenant-section"><h2>Mis reportes</h2>
+      ${reportRows ? `<ul class="tenant-list">${reportRows}</ul>` : '<p class="portal-empty">Aún no has enviado reportes.</p>'}
+    </section>
     <section class="tenant-section"><h2>Historial de pagos</h2>
-      ${paymentRows ? `<div class="property-table-wrap"><table class="data-table"><thead><tr><th>Propiedad</th><th>Periodo</th><th>Monto</th><th>Estado</th><th>Fecha de pago</th></tr></thead><tbody>${paymentRows}</tbody></table></div>` : '<p class="portal-empty">Aún no hay pagos registrados.</p>'}
+      ${paymentRows ? `<div class="property-table-wrap"><table class="data-table"><thead><tr><th>ID</th><th>Propiedad</th><th>Periodo</th><th>Monto</th><th>Estado</th><th>Fecha de pago</th></tr></thead><tbody>${paymentRows}</tbody></table></div>` : '<p class="portal-empty">Aún no hay pagos registrados.</p>'}
     </section>
     <section class="tenant-section"><h2>Contratos</h2>
-      ${contractRows ? `<ul class="tenant-list">${contractRows}</ul>` : '<p class="portal-empty">No hay contratos disponibles.</p>'}
+      ${contractRows ? `<p class="tenant-section-intro">El PDF es un formato con los datos registrados; no es una copia firmada.</p><ul class="tenant-list">${contractRows}</ul>` : '<p class="portal-empty">No hay contratos disponibles.</p>'}
     </section>
     <section class="tenant-section"><h2>Documentos compartidos</h2>
       ${documentRows ? `<ul class="history-document-list">${documentRows}</ul>` : '<p class="portal-empty">Tu asesor aún no ha compartido documentos.</p>'}
     </section>`;
+  const rentalSelect = accountSection.querySelector('#tenant-report-form [name="id_renta"]');
+  if (rentalSelect) enableSearchableSelect(rentalSelect, 'Renta o propiedad');
 }
 
 // Recupera la cuenta activa o restablece el formulario si la sesion no es valida.
@@ -130,13 +163,52 @@ logoutButton.addEventListener('click', () => {
   logoutButton.hidden = true;
 });
 
-// Descarga documentos autorizados con el token de la cuenta actual.
+accountSection.addEventListener('submit', async (event) => {
+  const form = event.target;
+  if (form.id !== 'tenant-report-form') return;
+  event.preventDefault();
+  const result = form.querySelector('#tenant-report-result');
+  const values = Object.fromEntries(new FormData(form));
+  if (!values.titulo.trim() || !values.descripcion.trim()) {
+    result.textContent = 'El asunto y la descripción no pueden estar vacíos.';
+    result.classList.add('portal-error');
+    return;
+  }
+  const button = form.querySelector('button[type="submit"]');
+  button.disabled = true;
+  result.textContent = '';
+  result.classList.remove('portal-error');
+  try {
+    await request('/api/workflows/tenant/reports', { method: 'POST', body: JSON.stringify(values) });
+  } catch (error) {
+    result.textContent = error.message;
+    result.classList.add('portal-error');
+    button.disabled = false;
+    return;
+  }
+  form.reset();
+  result.textContent = 'Reporte enviado. El equipo recibirá una notificación.';
+  button.disabled = false;
+  try {
+    const account = await request('/api/workflows/tenant/me');
+    renderAccount(account.data);
+    accountSection.querySelector('#tenant-report-result').textContent = 'Reporte enviado. El equipo recibirá una notificación.';
+  } catch (error) {
+    result.textContent = `Reporte enviado, pero no se pudo actualizar el historial: ${error.message}`;
+    result.classList.add('portal-error');
+  }
+});
+
+// Descarga contratos propios o documentos autorizados con el token de la cuenta.
 accountSection.addEventListener('click', async (event) => {
-  const button = event.target.closest('[data-tenant-download]');
+  const button = event.target.closest('[data-tenant-download], [data-tenant-contract]');
   if (!button) return;
   button.disabled = true;
   try {
-    const response = await fetch(`/api/workflows/tenant/documents/${button.dataset.tenantDownload}/file`, {
+    const isContract = Boolean(button.dataset.tenantContract);
+    const id = isContract ? button.dataset.tenantContract : button.dataset.tenantDownload;
+    const resource = isContract ? 'contracts' : 'documents';
+    const response = await fetch(`/api/workflows/tenant/${resource}/${id}/file`, {
       headers: { Authorization: `Bearer ${localStorage.getItem(tokenKey)}` },
     });
     if (!response.ok) {
@@ -144,10 +216,13 @@ accountSection.addEventListener('click', async (event) => {
       throw new Error(payload.error || 'No se pudo descargar el documento.');
     }
     const link = document.createElement('a');
-    link.href = URL.createObjectURL(await response.blob());
-    link.download = button.parentElement.querySelector('strong').textContent;
+    const url = URL.createObjectURL(await response.blob());
+    link.href = url;
+    link.download = isContract ? `contrato-renta-${id}.pdf` : button.parentElement.querySelector('strong').textContent;
+    document.body.append(link);
     link.click();
-    URL.revokeObjectURL(link.href);
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   } catch (error) {
     window.alert(error.message);
   } finally {

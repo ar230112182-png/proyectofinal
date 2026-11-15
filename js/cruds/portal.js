@@ -3,6 +3,21 @@ const listingContainer = document.getElementById('portal-properties');
 const statusElement = document.getElementById('portal-status');
 const detailContainer = document.getElementById('property-detail');
 const leadForm = document.getElementById('lead-form');
+const leadName = leadForm.elements.nombre;
+const leadBudgetMin = leadForm.elements.precio_min;
+const leadBudgetMax = leadForm.elements.precio_max;
+document.querySelectorAll('.portal-search select').forEach((select) => enableSelectSearch(select, select.parentElement.firstChild.textContent.trim()));
+
+leadName.addEventListener('input', () => {
+  leadName.setCustomValidity(leadName.value.trim() ? '' : 'Captura tu nombre.');
+});
+const validateLeadBudget = () => {
+  const invalidRange = leadBudgetMin.value && leadBudgetMax.value
+    && Number(leadBudgetMin.value) > Number(leadBudgetMax.value);
+  leadBudgetMax.setCustomValidity(invalidRange ? 'El presupuesto máximo debe ser igual o mayor al mínimo.' : '');
+};
+leadBudgetMin.addEventListener('input', validateLeadBudget);
+leadBudgetMax.addEventListener('input', validateLeadBudget);
 let listings = [];
 const selectedPropertyId = new URLSearchParams(window.location.search).get('propiedad');
 const listingPageSize = 24;

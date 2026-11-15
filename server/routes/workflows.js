@@ -4,8 +4,25 @@ const express = require('express');
 const multer = require('multer');
 const pool = require('../db');
 const { requireAuth, requireRole } = require('../middleware');
+const { createRentalContractPdf } = require('../contract-pdf');
 
 const router = express.Router();
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const phonePattern = /^\+?[0-9() .-]{7,20}$/;
+const curpPattern = /^[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d$/i;
+const isPositiveId = (value) => (typeof value === 'number' || typeof value === 'string' && value.trim() !== '')
+  && Number.isSafeInteger(Number(value)) && Number(value) > 0;
+const isFiniteNumber = (value) => (typeof value === 'number' || typeof value === 'string' && value.trim() !== '')
+  && Number.isFinite(Number(value));
+const isValidDateOnly = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))
+  && !Number.isNaN(Date.parse(`${value}T00:00:00Z`))
+  && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+const isValidEmail = (value) => typeof value === 'string' && value.trim().length <= 254
+  && emailPattern.test(value.trim());
+const isValidOptionalPhone = (value) => value === undefined || value === null || value === ''
+  || (typeof value === 'string' && phonePattern.test(value.trim()));
+const isValidOptionalString = (value, maxLength) => value === undefined || value === null
+  || (typeof value === 'string' && value.length <= maxLength);
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
@@ -49,10 +66,16 @@ const listQueries = {
       JOIN propiedades p ON p.id_propiedad = v.id_propiedad
       JOIN clientes c ON c.id_cliente = v.id_cliente
       JOIN usuarios u ON u.id_usuario = c.id_usuario ORDER BY v.fecha_venta DESC, v.id_venta DESC`,
-  commissions: `SELECT c.id_comision, c.id_propiedad, p.titulo AS propiedad,
+  commissions: `SELECT c.id_comision, c.id_propiedad, p.titulo AS propiedad, c.id_cliente,
+      CONCAT_WS(' ', client_user.nombre, client_user.apellido_paterno) AS cliente,
+      CONCAT_WS(' ', seller.nombre, seller.apellido_paterno) AS vendedor, c.es_demo,
       c.id_agente_captador, c.id_agente_vendedor, c.porcentaje_agencia,
       c.monto_operacion, c.monto_total, c.estado, c.creado_en FROM comisiones c
-      JOIN propiedades p ON p.id_propiedad = c.id_propiedad ORDER BY c.creado_en DESC, c.id_comision DESC`,
+      JOIN propiedades p ON p.id_propiedad = c.id_propiedad
+      LEFT JOIN clientes client ON client.id_cliente = c.id_cliente
+      LEFT JOIN usuarios client_user ON client_user.id_usuario = client.id_usuario
+      LEFT JOIN usuarios seller ON seller.id_usuario = c.id_agente_vendedor
+      ORDER BY c.creado_en DESC, c.id_comision DESC`,
   rentals: `SELECT r.id_renta, r.id_propiedad, p.titulo AS propiedad, r.id_cliente,
       u.nombre || ' ' || u.apellido_paterno AS cliente, r.id_agente, r.renta_mensual,
       r.fecha_inicio, r.fecha_fin, r.estado FROM rentas r
@@ -73,13 +96,16 @@ const listQueries = {
       CONCAT_WS(' ', creator.nombre, creator.apellido_paterno) AS solicitante,
       m.asignado_a,
       CONCAT_WS(' ', assignee.nombre, assignee.apellido_paterno) AS asignado,
-      m.titulo, m.descripcion, m.prioridad, m.estado, m.costo_estimado,
+      m.titulo, m.descripcion,
+      prioridad_mantenimiento(m.prioridad, m.prioridad_automatica, m.fecha_limite) AS prioridad,
+      m.prioridad_automatica, m.estado, m.costo_estimado,
       m.costo_final, m.fecha_limite, m.creado_en, m.actualizado_en
     FROM solicitudes_mantenimiento m
       JOIN propiedades p ON p.id_propiedad = m.id_propiedad
       JOIN usuarios creator ON creator.id_usuario = m.solicitado_por
       LEFT JOIN usuarios assignee ON assignee.id_usuario = m.asignado_a
-    ORDER BY CASE m.prioridad WHEN 'urgente' THEN 0 WHEN 'alta' THEN 1 ELSE 2 END,
+    ORDER BY CASE prioridad_mantenimiento(m.prioridad, m.prioridad_automatica, m.fecha_limite)
+      WHEN 'urgente' THEN 0 WHEN 'alta' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END,
       m.creado_en DESC, m.id_solicitud DESC`,
   users: `SELECT id_usuario, nombre, apellido_paterno, apellido_materno,
       correo, telefono, rol, activo, fecha_registro FROM usuarios ORDER BY id_usuario`,
@@ -113,6 +139,17 @@ const listQueries = {
       r.fecha_inicio AS fecha, 'rentar' AS actividad
     FROM rentas r JOIN propiedades p ON p.id_propiedad = r.id_propiedad
       JOIN usuarios u ON u.id_usuario = r.id_agente
+    UNION ALL
+    SELECT c.id_compra AS id, a.id_usuario AS id_vendedor,
+      CONCAT_WS(' ', u.nombre, u.apellido_paterno) AS vendedor,
+      CASE WHEN c.observaciones LIKE 'Compra demo-reportes-200-%'
+        THEN '[DEMO] ' || p.titulo ELSE p.titulo END AS propiedad,
+      'COMPRA' AS operacion, c.precio_compra AS cobros,
+      c.fecha_compra AS fecha, 'comprar' AS actividad
+    FROM compras c JOIN propiedades p ON p.id_propiedad = c.id_propiedad
+      JOIN agentes a ON a.id_agente = c.id_agente
+      JOIN usuarios u ON u.id_usuario = a.id_usuario
+    WHERE c.estado = 'COMPLETADA'
     ORDER BY fecha DESC, operacion, id DESC`,
 };
 
@@ -135,8 +172,8 @@ async function runPaginated(sql, query) {
   return { data: rows.rows, meta: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) } };
 }
 
-async function audit(userId, action, entity, entityId, detail = {}) {
-  const { rows } = await pool.query(`
+async function audit(userId, action, entity, entityId, detail = {}, db = pool) {
+  const { rows } = await db.query(`
     SELECT EXISTS (
       SELECT 1
       FROM information_schema.columns
@@ -153,7 +190,7 @@ async function audit(userId, action, entity, entityId, detail = {}) {
     JSON.stringify(detail),
   ];
   const column = rows[0].has_detail ? 'detalle' : 'datos_nuevos';
-  await pool.query(`
+  await db.query(`
     INSERT INTO auditoria (id_usuario, accion, entidad, entidad_id, ${column})
     VALUES ($1, $2, $3, $4, $5::jsonb)
   `, values);
@@ -225,13 +262,17 @@ async function syncNotifications() {
       WHERE s.tipo = 'tarea' AND s.estado = 'pendiente'
         AND s.fecha_limite <= CURRENT_TIMESTAMP + INTERVAL '7 days'
       UNION ALL
-      SELECT 'maintenance:' || m.id_solicitud::text, 'Solicitud de mantenimiento',
-        CONCAT(p.titulo, ' · ', m.titulo, ' · ', m.prioridad),
-        'maintenance', m.id_solicitud::text, m.asignado_a
+      SELECT 'maintenance:' || m.id_solicitud::text,
+        CASE WHEN creator.rol = 'cliente' THEN 'Reporte de inquilino' ELSE 'Solicitud de mantenimiento' END,
+        CONCAT(p.titulo, ' · ', m.titulo, ' · ', prioridad_mantenimiento(m.prioridad, m.prioridad_automatica, m.fecha_limite)),
+        'maintenance', m.id_solicitud::text,
+        CASE WHEN creator.rol = 'cliente' THEN COALESCE(m.asignado_a, r.id_agente) ELSE m.asignado_a END
       FROM solicitudes_mantenimiento m
       JOIN propiedades p ON p.id_propiedad = m.id_propiedad
+      JOIN usuarios creator ON creator.id_usuario = m.solicitado_por
+      LEFT JOIN rentas r ON r.id_renta = m.id_renta
       WHERE m.estado IN ('pendiente', 'en_proceso')
-        AND m.prioridad IN ('alta', 'urgente')
+        AND (creator.rol = 'cliente' OR prioridad_mantenimiento(m.prioridad, m.prioridad_automatica, m.fecha_limite) IN ('alta', 'urgente'))
     )
     INSERT INTO notificaciones
       (id_usuario, dedupe_key, titulo, detalle, entidad, entidad_id)
@@ -255,7 +296,10 @@ router.get('/public/properties/:id', async (request, response, next) => {
     const result = await pool.query(`
       SELECT p.id_propiedad, p.titulo, p.descripcion, p.precio,
         p.tipo_operacion, p.superficie, p.habitaciones, p.banos,
-        p.estacionamientos, p.imagen_url, p.latitud, p.longitud,
+        p.estacionamientos,
+        CASE WHEN EXISTS (SELECT 1 FROM propiedad_imagenes i WHERE i.id_propiedad = p.id_propiedad)
+          THEN '/api/properties/' || p.id_propiedad || '/image' ELSE p.imagen_url END AS imagen_url,
+        p.latitud, p.longitud,
         c.nombre AS categoria,
         CONCAT_WS(', ', NULLIF(TRIM(CONCAT_WS(' ', d.calle, d.numero)), ''),
           d.colonia, d.ciudad, d.estado) AS direccion
@@ -276,7 +320,9 @@ router.get('/public/properties', async (request, response, next) => {
   try {
     return response.json(await runPaginated(`
       SELECT p.id_propiedad, p.titulo, p.descripcion, p.precio, p.tipo_operacion,
-        p.superficie, p.habitaciones, p.banos, p.estacionamientos, p.imagen_url,
+        p.superficie, p.habitaciones, p.banos, p.estacionamientos,
+        CASE WHEN EXISTS (SELECT 1 FROM propiedad_imagenes i WHERE i.id_propiedad = p.id_propiedad)
+          THEN '/api/properties/' || p.id_propiedad || '/image' ELSE p.imagen_url END AS imagen_url,
         c.nombre AS categoria,
         CONCAT_WS(', ', d.calle || ' ' || COALESCE(d.numero, ''), d.colonia, d.ciudad, d.estado) AS direccion
       FROM propiedades p JOIN categorias c ON c.id_categoria = p.id_categoria
@@ -294,8 +340,19 @@ router.post('/public/leads', async (request, response, next) => {
   const propertyId = id_propiedad === undefined || id_propiedad === null || id_propiedad === ''
     ? null
     : Number(id_propiedad);
-  if (typeof nombre !== 'string' || !nombre.trim() || consentimiento_datos !== true) {
-    return response.status(400).json({ error: 'Nombre y consentimiento de datos son obligatorios.' });
+  if (typeof nombre !== 'string' || !nombre.trim() || nombre.trim().length > 80 || consentimiento_datos !== true) {
+    return response.status(400).json({ error: 'El nombre (máximo 80 caracteres) y el consentimiento de datos son obligatorios.' });
+  }
+  if ((correo && !isValidEmail(correo)) || !isValidOptionalPhone(telefono)
+    || !isValidOptionalString(ciudad, 100) || !isValidOptionalString(tipo, 100)
+    || (precio_min !== undefined && precio_min !== '' && (!isFiniteNumber(precio_min) || Number(precio_min) < 0))
+    || (precio_max !== undefined && precio_max !== '' && (!isFiniteNumber(precio_max) || Number(precio_max) < 0))
+    || (precio_min !== undefined && precio_min !== '' && precio_max !== undefined && precio_max !== ''
+      && Number(precio_min) > Number(precio_max))
+    || (habitaciones_min !== undefined && habitaciones_min !== ''
+      && (!Number.isSafeInteger(Number(habitaciones_min)) || Number(habitaciones_min) < 0))
+    || (operacion && !['VENTA', 'RENTA'].includes(String(operacion).toUpperCase()))) {
+    return response.status(400).json({ error: 'Revisa correo, teléfono, ciudad, categoría, presupuesto, habitaciones y operación.' });
   }
   if (propertyId !== null && (!Number.isSafeInteger(propertyId) || propertyId <= 0)) {
     return response.status(400).json({ error: 'La propiedad seleccionada no es válida.' });
@@ -585,9 +642,9 @@ router.get('/tenant/me', requireAuth, requireRole('cliente'), async (request, re
     `, [request.user.id_usuario]);
     if (!clientResult.rowCount) return response.status(403).json({ error: 'La cuenta no tiene un perfil de inquilino asociado.' });
     const client = clientResult.rows[0];
-    const [rentals, contracts, payments, documents] = await Promise.all([
+    const [rentals, contracts, payments, documents, reports] = await Promise.all([
       pool.query(`
-        SELECT r.id_renta, r.renta_mensual, r.fecha_inicio, r.fecha_fin, r.estado,
+        SELECT r.id_renta, r.renta_mensual, r.fecha_inicio, r.fecha_fin, r.estado, p.eliminado,
           p.titulo AS propiedad,
           CONCAT_WS(', ', d.calle || ' ' || COALESCE(d.numero, ''),
             d.colonia, d.ciudad, d.estado) AS direccion
@@ -620,6 +677,16 @@ router.get('/tenant/me', requireAuth, requireRole('cliente'), async (request, re
         GROUP BY d.id_documento, access.otorgado_en
         ORDER BY access.otorgado_en DESC
       `, [client.id_cliente]),
+      pool.query(`
+        SELECT m.id_solicitud, m.titulo, m.descripcion,
+          prioridad_mantenimiento(m.prioridad, m.prioridad_automatica, m.fecha_limite) AS prioridad, m.estado,
+          m.creado_en, p.titulo AS propiedad
+        FROM solicitudes_mantenimiento m
+        JOIN rentas r ON r.id_renta = m.id_renta
+        JOIN propiedades p ON p.id_propiedad = m.id_propiedad
+        WHERE r.id_cliente = $1 AND m.solicitado_por = $2
+        ORDER BY m.creado_en DESC, m.id_solicitud DESC
+      `, [client.id_cliente, request.user.id_usuario]),
     ]);
     return response.json({ data: {
       client,
@@ -627,13 +694,74 @@ router.get('/tenant/me', requireAuth, requireRole('cliente'), async (request, re
       contracts: contracts.rows,
       payments: payments.rows,
       documents: documents.rows,
+      reports: reports.rows,
     } });
   } catch (error) {
     return next(error);
   }
 });
 
+router.post('/tenant/reports', requireAuth, requireRole('cliente'), async (request, response, next) => {
+  const { id_renta, titulo, descripcion, prioridad } = request.body;
+  if (!isPositiveId(id_renta)
+    || typeof titulo !== 'string' || !titulo.trim() || titulo.trim().length > 180
+    || typeof descripcion !== 'string' || !descripcion.trim() || descripcion.trim().length > 2000
+    || !['baja', 'normal', 'alta', 'urgente'].includes(prioridad)) {
+    return response.status(400).json({ error: 'Selecciona una renta y completa asunto, descripción y prioridad válidos.' });
+  }
+  let db;
+  try {
+    db = await pool.connect();
+    await db.query('BEGIN');
+    const result = await db.query(`
+      INSERT INTO solicitudes_mantenimiento
+        (id_propiedad, id_renta, solicitado_por, titulo, descripcion, prioridad)
+      SELECT r.id_propiedad, r.id_renta, $1, $3, $4, $5
+      FROM rentas r
+      JOIN clientes c ON c.id_cliente = r.id_cliente
+      JOIN propiedades p ON p.id_propiedad = r.id_propiedad
+      WHERE r.id_renta = $2 AND c.id_usuario = $1
+        AND LOWER(r.estado) = 'activa' AND p.eliminado = FALSE
+      RETURNING id_solicitud, estado
+    `, [request.user.id_usuario, id_renta, titulo.trim(), descripcion.trim(), prioridad]);
+    if (!result.rowCount) {
+      await db.query('ROLLBACK');
+      return response.status(404).json({ error: 'La renta seleccionada no está disponible para esta cuenta.' });
+    }
+    await audit(request.user.id_usuario, 'crear', 'solicitudes_mantenimiento',
+      result.rows[0].id_solicitud, { titulo: titulo.trim(), prioridad }, db);
+    await db.query('COMMIT');
+    return response.status(201).json({ data: result.rows[0] });
+  } catch (error) {
+    if (db) await db.query('ROLLBACK');
+    return next(error);
+  } finally {
+    if (db) db.release();
+  }
+});
+
+router.get('/tenant/contracts/:id/file', requireAuth, requireRole('cliente'), async (request, response, next) => {
+  if (!isPositiveId(request.params.id)) return response.status(404).json({ error: 'Contrato no encontrado.' });
+  try {
+    const result = await pool.query(`
+      SELECT contract.*
+      FROM contratos contract
+      JOIN clientes client ON client.id_cliente = contract.id_cliente
+      WHERE contract.id_contrato = $1 AND client.id_usuario = $2
+        AND contract.tipo_operacion = 'RENTA'
+    `, [request.params.id, request.user.id_usuario]);
+    if (!result.rowCount) return response.status(404).json({ error: 'Contrato no encontrado.' });
+    const pdf = createRentalContractPdf(result.rows[0]);
+    response.type('application/pdf');
+    response.setHeader('Content-Disposition', `attachment; filename="contrato-renta-${request.params.id}.pdf"`);
+    return response.send(pdf);
+  } catch (error) {
+    return next(error);
+  }
+});
+
 router.get('/tenant/documents/:id/file', requireAuth, requireRole('cliente'), async (request, response, next) => {
+  if (!isPositiveId(request.params.id)) return response.status(404).json({ error: 'Documento autorizado no encontrado.' });
   try {
     const result = await pool.query(`
       SELECT d.nombre_archivo, d.mime_type, d.contenido
@@ -722,13 +850,14 @@ router.get('/summary', requireAuth, requireRole('agente', 'administrador'), asyn
         LIMIT 4
       `),
       pool.query(`
-        SELECT m.id_solicitud, m.titulo, m.prioridad, p.titulo AS propiedad,
+        SELECT m.id_solicitud, m.titulo,
+          prioridad_mantenimiento(m.prioridad, m.prioridad_automatica, m.fecha_limite) AS prioridad, p.titulo AS propiedad,
           COUNT(*) OVER() AS total
         FROM solicitudes_mantenimiento m
         JOIN propiedades p ON p.id_propiedad = m.id_propiedad
         WHERE m.estado IN ('pendiente', 'en_proceso')
-          AND m.prioridad IN ('alta', 'urgente')
-        ORDER BY CASE m.prioridad WHEN 'urgente' THEN 0 ELSE 1 END,
+          AND prioridad_mantenimiento(m.prioridad, m.prioridad_automatica, m.fecha_limite) IN ('alta', 'urgente')
+        ORDER BY CASE prioridad_mantenimiento(m.prioridad, m.prioridad_automatica, m.fecha_limite) WHEN 'urgente' THEN 0 ELSE 1 END,
           m.creado_en ASC, m.id_solicitud ASC
         LIMIT 4
       `),
@@ -839,17 +968,18 @@ router.get('/schema', requireAuth, requireRole('agente', 'administrador'), async
 
 router.get('/options', requireAuth, requireRole('agente', 'administrador'), async (_request, response, next) => {
   try {
-    const [clients, properties, users, categories, leads, rentals] = await Promise.all([
+    const [clients, properties, users, sellers, categories, leads, rentals] = await Promise.all([
       pool.query(`SELECT c.id_cliente AS id, u.nombre || ' ' || u.apellido_paterno AS nombre FROM clientes c JOIN usuarios u USING (id_usuario) ORDER BY nombre`),
       pool.query(`
         SELECT p.id_propiedad AS id,
           p.titulo || COALESCE(' · ' || d.ciudad, '') AS nombre,
-          p.tipo_operacion, p.latitud, p.longitud, p.superficie
+          p.tipo_operacion, p.latitud, p.longitud, p.superficie, p.precio
         FROM propiedades p LEFT JOIN direcciones d ON d.id_propiedad = p.id_propiedad
         WHERE p.eliminado = FALSE
         ORDER BY p.titulo
       `),
       pool.query(`SELECT id_usuario AS id, nombre || ' ' || apellido_paterno AS nombre FROM usuarios WHERE activo = TRUE AND rol IN ('admin','administrador','agente','vendedor') ORDER BY nombre`),
+      pool.query(`SELECT id_usuario AS id, nombre || ' ' || apellido_paterno AS nombre FROM usuarios WHERE activo = TRUE AND rol IN ('agente','vendedor') ORDER BY nombre, id_usuario`),
       pool.query('SELECT id_categoria AS id, nombre FROM categorias ORDER BY nombre'),
       pool.query('SELECT id_lead AS id, nombre FROM leads ORDER BY nombre'),
       pool.query(`
@@ -864,7 +994,7 @@ router.get('/options', requireAuth, requireRole('agente', 'administrador'), asyn
       `),
     ]);
     return response.json({ data: {
-      clients: clients.rows, properties: properties.rows, users: users.rows,
+      clients: clients.rows, properties: properties.rows, users: users.rows, sellers: sellers.rows,
       categories: categories.rows, leads: leads.rows, rentals: rentals.rows,
     } });
   } catch (error) {
@@ -874,9 +1004,10 @@ router.get('/options', requireAuth, requireRole('agente', 'administrador'), asyn
 
 router.get('/contracts', requireAuth, requireRole('agente', 'administrador'), async (request, response, next) => {
   try {
+    const baseQuery = listQueries.contracts.replace(/\s+ORDER BY[^]*$/, '');
     const query = request.user.rol === 'administrador'
-      ? `${listQueries.contracts} ORDER BY creado_en DESC`
-      : `${listQueries.contracts} WHERE id_vendedor = $1 ORDER BY creado_en DESC`;
+      ? `${baseQuery} ORDER BY creado_en DESC`
+      : `${baseQuery} WHERE id_vendedor = $1 ORDER BY creado_en DESC`;
     const result = await pool.query(query, request.user.rol === 'administrador' ? [] : [request.user.id_usuario]);
     return response.json({ data: result.rows });
   } catch (error) {
@@ -945,7 +1076,7 @@ router.post('/contracts', requireAuth, requireRole('agente', 'administrador'), a
   } = request.body;
   const operation = String(tipo_operacion || '').toUpperCase();
   const agreedAmount = operation === 'RENTA' ? (precio_total || renta_mensual) : precio_total;
-  const numeric = (value) => value !== '' && value !== null && value !== undefined && Number.isFinite(Number(value));
+  const numeric = isFiniteNumber;
   const validCoordinate = (value, minimum, maximum) => numeric(value) && Number(value) >= minimum && Number(value) <= maximum;
   const validDate = (value) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))) return false;
@@ -953,12 +1084,18 @@ router.post('/contracts', requireAuth, requireRole('agente', 'administrador'), a
     return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
   };
 
-  if (!['VENTA', 'RENTA'].includes(operation) || !id_propiedad
+  if (!['VENTA', 'RENTA'].includes(operation) || !isPositiveId(id_propiedad)
     || !numeric(agreedAmount) || Number(agreedAmount) <= 0
     || !numeric(frente_metros) || Number(frente_metros) <= 0
     || !numeric(fondo_metros) || Number(fondo_metros) <= 0
     || !numeric(superficie_m2) || Number(superficie_m2) <= 0) {
     return response.status(400).json({ error: 'Completa operación, lote, precio y las tres medidas con valores válidos.' });
+  }
+  if (!isValidOptionalString(observaciones, 2000)) {
+    return response.status(400).json({ error: 'Las observaciones no deben superar 2000 caracteres.' });
+  }
+  if (id_cliente !== undefined && id_cliente !== null && id_cliente !== '' && !isPositiveId(id_cliente)) {
+    return response.status(400).json({ error: 'El cliente seleccionado no es válido.' });
   }
   if (operation === 'VENTA' && (!validCoordinate(latitud, -90, 90) || !validCoordinate(longitud, -180, 180))) {
     return response.status(400).json({ error: 'Las coordenadas válidas de latitud y longitud son obligatorias para una venta.' });
@@ -1022,9 +1159,16 @@ router.post('/contracts', requireAuth, requireRole('agente', 'administrador'), a
       const nombre = String(clientData.nombre || '').trim();
       const apellidoPaterno = String(clientData.apellido_paterno || '').trim();
       const correo = String(clientData.correo || '').trim().toLowerCase();
-      if (!nombre || !apellidoPaterno || !correo) {
+      if (!nombre || nombre.length > 80 || !apellidoPaterno || apellidoPaterno.length > 80
+        || !isValidEmail(correo) || !isValidOptionalString(clientData.apellido_materno, 80)
+        || !isValidOptionalPhone(clientData.telefono)
+        || (clientData.curp && !curpPattern.test(String(clientData.curp).trim()))
+        || !isValidOptionalString(clientData.direccion, 250)
+        || !isValidOptionalString(clientData.ciudad, 100)
+        || !isValidOptionalString(clientData.estado, 100)
+        || (clientData.codigo_postal && !/^\d{5}$/.test(String(clientData.codigo_postal)))) {
         await db.query('ROLLBACK');
-        return response.status(400).json({ error: 'Para registrar un cliente nuevo, nombre, apellido paterno y correo son obligatorios.' });
+        return response.status(400).json({ error: 'Revisa nombre, apellidos, correo, teléfono, CURP y domicilio del cliente nuevo.' });
       }
       const existing = await db.query(`
         SELECT c.id_cliente FROM clientes c
@@ -1262,7 +1406,7 @@ router.post('/maintenance', requireAuth, requireRole('agente', 'administrador'),
   } = request.body;
   const normalizedPriority = String(prioridad || 'normal').toLowerCase();
   const optionalNumber = (value) => value === undefined || value === null || value === ''
-    || (Number.isSafeInteger(Number(value)) && Number(value) > 0);
+    || (isFiniteNumber(value) && Number.isSafeInteger(Number(value)) && Number(value) > 0);
   const validDeadline = !fecha_limite || (
     /^\d{4}-\d{2}-\d{2}$/.test(fecha_limite)
     && !Number.isNaN(Date.parse(`${fecha_limite}T00:00:00Z`))
@@ -1271,7 +1415,7 @@ router.post('/maintenance', requireAuth, requireRole('agente', 'administrador'),
   if (!Number.isSafeInteger(Number(id_propiedad)) || Number(id_propiedad) <= 0
     || typeof titulo !== 'string' || !titulo.trim() || titulo.trim().length > 180
     || typeof descripcion !== 'string' || !descripcion.trim()
-    || !['baja', 'normal', 'alta', 'urgente'].includes(normalizedPriority)
+    || !['automatica', 'baja', 'normal', 'alta', 'urgente'].includes(normalizedPriority)
     || !optionalNumber(id_renta) || !optionalNumber(asignado_a)
     || (costo_estimado !== undefined && costo_estimado !== ''
       && (!Number.isFinite(Number(costo_estimado)) || Number(costo_estimado) < 0))
@@ -1297,13 +1441,14 @@ router.post('/maintenance', requireAuth, requireRole('agente', 'administrador'),
     const result = await pool.query(`
       INSERT INTO solicitudes_mantenimiento
         (id_propiedad, id_renta, solicitado_por, asignado_a, titulo, descripcion,
-          prioridad, costo_estimado, fecha_limite)
-      SELECT p.id_propiedad, $2, $3, $4, $5, $6, $7, $8, $9
+          prioridad, prioridad_automatica, costo_estimado, fecha_limite)
+      SELECT p.id_propiedad, $2, $3, $4, $5, $6, $7, $8, $9, $10
       FROM propiedades p
       WHERE p.id_propiedad = $1 AND p.eliminado = FALSE
       RETURNING *
     `, [id_propiedad, id_renta || null, request.user.id_usuario, asignado_a || null,
-      titulo.trim(), descripcion.trim(), normalizedPriority,
+      titulo.trim(), descripcion.trim(), normalizedPriority === 'automatica' ? 'normal' : normalizedPriority,
+      normalizedPriority === 'automatica',
       costo_estimado === '' ? null : costo_estimado || null, fecha_limite || null]);
     if (!result.rowCount) return response.status(404).json({ error: 'La propiedad no existe o ya fue archivada.' });
     await audit(request.user.id_usuario, 'crear', 'solicitudes_mantenimiento',
@@ -1316,8 +1461,17 @@ router.post('/maintenance', requireAuth, requireRole('agente', 'administrador'),
 
 router.post('/clients', requireAuth, requireRole('agente', 'administrador'), async (request, response, next) => {
   const { nombre, apellido_paterno, apellido_materno, correo, telefono, curp, direccion, ciudad, estado, codigo_postal } = request.body;
-  if (!nombre || !apellido_paterno || !correo) {
-    return response.status(400).json({ error: 'Nombre, apellido y correo son obligatorios.' });
+  if (typeof nombre !== 'string' || !nombre.trim() || nombre.trim().length > 80
+    || typeof apellido_paterno !== 'string' || !apellido_paterno.trim() || apellido_paterno.trim().length > 80
+    || !isValidEmail(correo)) {
+    return response.status(400).json({ error: 'Nombre y apellido (máximo 80 caracteres) y un correo válido son obligatorios.' });
+  }
+  if (!isValidOptionalString(apellido_materno, 80) || !isValidOptionalPhone(telefono)
+    || (curp && !curpPattern.test(String(curp).trim()))
+    || !isValidOptionalString(direccion, 250) || !isValidOptionalString(ciudad, 100)
+    || !isValidOptionalString(estado, 100)
+    || (codigo_postal && !/^\d{5}$/.test(String(codigo_postal)))) {
+    return response.status(400).json({ error: 'Revisa apellidos, teléfono, CURP y datos de domicilio.' });
   }
   const client = await pool.connect();
   try {
@@ -1366,7 +1520,19 @@ router.patch('/clients/:id', requireAuth, requireRole('agente', 'administrador')
 
 router.post('/leads', requireAuth, requireRole('agente', 'administrador'), async (request, response, next) => {
   const { nombre, correo, telefono, origen, ciudad, precio_min, precio_max, habitaciones_min, tipo, operacion } = request.body;
-  if (!nombre) return response.status(400).json({ error: 'El nombre del cliente potencial es obligatorio.' });
+  if (typeof nombre !== 'string' || !nombre.trim() || nombre.trim().length > 80
+    || (correo && !isValidEmail(correo)) || !isValidOptionalPhone(telefono)
+    || !isValidOptionalString(origen, 100) || !isValidOptionalString(ciudad, 100)
+    || !isValidOptionalString(tipo, 100)
+    || (precio_min !== undefined && precio_min !== '' && (!isFiniteNumber(precio_min) || Number(precio_min) < 0))
+    || (precio_max !== undefined && precio_max !== '' && (!isFiniteNumber(precio_max) || Number(precio_max) < 0))
+    || (precio_min !== undefined && precio_min !== '' && precio_max !== undefined && precio_max !== ''
+      && Number(precio_min) > Number(precio_max))
+    || (habitaciones_min !== undefined && habitaciones_min !== ''
+      && (!Number.isSafeInteger(Number(habitaciones_min)) || Number(habitaciones_min) < 0))
+    || (operacion && !['VENTA', 'RENTA'].includes(String(operacion).toUpperCase()))) {
+    return response.status(400).json({ error: 'Revisa nombre, contacto y preferencias del cliente potencial.' });
+  }
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -1394,8 +1560,10 @@ router.post('/leads', requireAuth, requireRole('agente', 'administrador'), async
 
 router.post('/visits', requireAuth, requireRole('agente', 'administrador'), async (request, response, next) => {
   const { id_cliente, id_propiedad, fecha_cita, motivo } = request.body;
-  if (!id_cliente || !id_propiedad || !fecha_cita) {
-    return response.status(400).json({ error: 'Cliente, propiedad y fecha son obligatorios.' });
+  if (!isPositiveId(id_cliente) || !isPositiveId(id_propiedad)
+    || typeof fecha_cita !== 'string' || Number.isNaN(Date.parse(fecha_cita))
+    || !isValidOptionalString(motivo, 500)) {
+    return response.status(400).json({ error: 'Selecciona un cliente y una propiedad, indica una fecha válida y limita el motivo a 500 caracteres.' });
   }
   try {
     const result = await pool.query(`
@@ -1411,7 +1579,11 @@ router.post('/visits', requireAuth, requireRole('agente', 'administrador'), asyn
 
 router.post('/offers', requireAuth, requireRole('agente', 'administrador'), async (request, response, next) => {
   const { id_propiedad, monto, tipo, notas } = request.body;
-  if (!id_propiedad || !monto || !tipo) return response.status(400).json({ error: 'Propiedad, monto y tipo son obligatorios.' });
+  if (!isPositiveId(id_propiedad) || !isFiniteNumber(monto) || Number(monto) <= 0
+    || !['OFERTA', 'CONTRAPROPUESTA'].includes(String(tipo || '').toUpperCase())
+    || !isValidOptionalString(notas, 2000)) {
+    return response.status(400).json({ error: 'Selecciona una propiedad, indica un monto mayor a cero, un tipo válido y notas de hasta 2000 caracteres.' });
+  }
   try {
     const result = await pool.query(`
       INSERT INTO ofertas (id_oferta, id_propiedad, id_usuario, monto, tipo, notas)
@@ -1426,8 +1598,10 @@ router.post('/offers', requireAuth, requireRole('agente', 'administrador'), asyn
 
 router.post('/sales', requireAuth, requireRole('administrador'), async (request, response, next) => {
   const { id_propiedad, id_cliente, id_agente, precio_venta, fecha_venta } = request.body;
-  if (!id_propiedad || !id_cliente || !id_agente || !precio_venta) {
-    return response.status(400).json({ error: 'Propiedad, cliente, agente y precio son obligatorios.' });
+  if (!isPositiveId(id_propiedad) || !isPositiveId(id_cliente) || !isPositiveId(id_agente)
+    || !isFiniteNumber(precio_venta) || Number(precio_venta) <= 0
+    || (fecha_venta && !isValidDateOnly(fecha_venta))) {
+    return response.status(400).json({ error: 'Selecciona propiedad, cliente y agente, captura un precio mayor a cero y una fecha válida.' });
   }
   const client = await pool.connect();
   try {
@@ -1450,25 +1624,47 @@ router.post('/sales', requireAuth, requireRole('administrador'), async (request,
 });
 
 router.post('/commissions', requireAuth, requireRole('administrador'), async (request, response, next) => {
-  const { id_propiedad, id_agente_captador, id_agente_vendedor, porcentaje_agencia, monto_operacion, monto_total, estado } = request.body;
-  if (!id_propiedad || !monto_operacion || !monto_total) return response.status(400).json({ error: 'Propiedad y montos son obligatorios.' });
+  const { id_propiedad, id_cliente, id_agente_vendedor } = request.body;
+  if (!isPositiveId(id_propiedad) || !isPositiveId(id_cliente) || !isPositiveId(id_agente_vendedor)) {
+    return response.status(400).json({ error: 'Selecciona propiedad, cliente y vendedor.' });
+  }
+  let client;
   try {
-    const result = await pool.query(`
+    client = await pool.connect();
+    await client.query('BEGIN');
+    const result = await client.query(`
       INSERT INTO comisiones
-        (id_comision, id_propiedad, id_agente_captador, id_agente_vendedor, porcentaje_agencia, monto_operacion, monto_total, estado)
-      VALUES (nextval('public.comisiones_id_comision_seq'), $1, $2, $3, $4, $5, $6, COALESCE($7, 'PENDIENTE')) RETURNING *
-    `, [id_propiedad, id_agente_captador || null, id_agente_vendedor || null,
-      porcentaje_agencia || 0, monto_operacion, monto_total, estado || null]);
-    await audit(request.user.id_usuario, 'crear', 'comisiones', result.rows[0].id_comision);
+        (id_propiedad, id_cliente, id_agente_vendedor, porcentaje_agencia, monto_operacion, monto_total, estado)
+      SELECT p.id_propiedad, c.id_cliente, seller.id_usuario, 5, p.precio, ROUND(p.precio * 0.05, 2), 'PENDIENTE'
+      FROM propiedades p
+      JOIN clientes c ON c.id_cliente = $2
+      JOIN usuarios seller ON seller.id_usuario = $3 AND seller.activo = TRUE AND seller.rol IN ('agente', 'vendedor')
+      WHERE p.id_propiedad = $1 AND p.eliminado = FALSE AND p.precio > 0
+      RETURNING *
+    `, [id_propiedad, id_cliente, id_agente_vendedor]);
+    if (!result.rowCount) {
+      await client.query('ROLLBACK');
+      return response.status(400).json({ error: 'La propiedad, el cliente o el vendedor seleccionado no está disponible.' });
+    }
+    await audit(request.user.id_usuario, 'crear', 'comisiones', result.rows[0].id_comision, {}, client);
+    await client.query('COMMIT');
     return response.status(201).json({ data: result.rows[0] });
   } catch (error) {
+    if (client) await client.query('ROLLBACK');
     return next(error);
+  } finally {
+    if (client) client.release();
   }
 });
 
 router.post('/rentals', requireAuth, requireRole('agente', 'administrador'), async (request, response, next) => {
   const { id_propiedad, id_cliente, renta_mensual, fecha_inicio, fecha_fin } = request.body;
-  if (!id_propiedad || !id_cliente || !renta_mensual || !fecha_inicio) return response.status(400).json({ error: 'Propiedad, cliente, renta mensual e inicio son obligatorios.' });
+  if (!isPositiveId(id_propiedad) || !isPositiveId(id_cliente)
+    || !isFiniteNumber(renta_mensual) || Number(renta_mensual) <= 0
+    || !isValidDateOnly(fecha_inicio)
+    || (fecha_fin && (!isValidDateOnly(fecha_fin) || fecha_fin < fecha_inicio))) {
+    return response.status(400).json({ error: 'Selecciona propiedad y cliente, indica una renta mayor a cero y un periodo con fechas válidas.' });
+  }
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -1490,7 +1686,11 @@ router.post('/rentals', requireAuth, requireRole('agente', 'administrador'), asy
 
 router.post('/payments', requireAuth, requireRole('agente', 'administrador'), async (request, response, next) => {
   const { id_renta, periodo, monto, estado } = request.body;
-  if (!id_renta || !periodo || !monto) return response.status(400).json({ error: 'Renta, periodo y monto son obligatorios.' });
+  if (!isPositiveId(id_renta) || !isValidDateOnly(periodo)
+    || !isFiniteNumber(monto) || Number(monto) <= 0
+    || (estado && !['PAGADO', 'PENDIENTE'].includes(String(estado).toUpperCase()))) {
+    return response.status(400).json({ error: 'Selecciona una renta, un periodo válido, un monto mayor a cero y un estado permitido.' });
+  }
   try {
     const result = await pool.query(`
       INSERT INTO pagos_renta (id_pago, id_renta, periodo, monto, estado, pagado_en)
@@ -1508,8 +1708,13 @@ router.post('/payments', requireAuth, requireRole('agente', 'administrador'), as
 router.post('/users', requireAuth, requireRole('administrador'), async (request, response, next) => {
   const { nombre, apellido_paterno, apellido_materno, correo, telefono, password, rol } = request.body;
   const normalizedRole = String(rol || '').toLowerCase();
-  if (!nombre || !apellido_paterno || !correo || !password || !normalizedRole) {
-    return response.status(400).json({ error: 'Nombre, apellido, correo, contraseña y rol son obligatorios.' });
+  if (typeof nombre !== 'string' || !nombre.trim() || nombre.trim().length > 80
+    || typeof apellido_paterno !== 'string' || !apellido_paterno.trim() || apellido_paterno.trim().length > 80
+    || !isValidEmail(correo) || !password || !normalizedRole) {
+    return response.status(400).json({ error: 'Nombre y apellido (máximo 80 caracteres), correo válido, contraseña y rol son obligatorios.' });
+  }
+  if (!isValidOptionalString(apellido_materno, 80) || !isValidOptionalPhone(telefono)) {
+    return response.status(400).json({ error: 'Revisa apellidos y teléfono.' });
   }
   if (!['cliente', 'usuario', 'administrador', 'vendedor'].includes(normalizedRole)) {
     return response.status(400).json({ error: 'El rol debe ser cliente, usuario, administrador o vendedor.' });
@@ -1545,6 +1750,13 @@ router.patch('/users/:id', requireAuth, requireRole('administrador'), async (req
       values.push(typeof value === 'string' ? value.trim() : value);
     }
   };
+  if ((nombre !== undefined && (typeof nombre !== 'string' || !nombre.trim() || nombre.trim().length > 80))
+    || (apellido_paterno !== undefined && (typeof apellido_paterno !== 'string' || !apellido_paterno.trim() || apellido_paterno.trim().length > 80))
+    || !isValidOptionalString(apellido_materno, 80)
+    || (correo !== undefined && !isValidEmail(correo))
+    || !isValidOptionalPhone(telefono)) {
+    return response.status(400).json({ error: 'Revisa nombre, apellidos, correo y teléfono antes de guardar.' });
+  }
   addField('nombre', nombre);
   addField('apellido_paterno', apellido_paterno);
   addField('apellido_materno', apellido_materno);
@@ -1615,7 +1827,7 @@ router.patch('/:resource/:id', requireAuth, async (request, response, next) => {
     maintenance: {
       table: 'solicitudes_mantenimiento',
       key: 'id_solicitud',
-      fields: ['estado', 'asignado_a', 'costo_final'],
+      fields: ['estado', 'asignado_a', 'costo_final', 'prioridad', 'fecha_limite'],
     },
   }[resource];
   if (!allowed) return response.status(404).json({ error: 'Recurso no editable.' });
@@ -1624,14 +1836,43 @@ router.patch('/:resource/:id', requireAuth, async (request, response, next) => {
   }
   const updates = Object.entries(request.body).filter(([key, value]) => allowed.fields.includes(key) && value !== undefined);
   if (!updates.length) return response.status(400).json({ error: 'No hay cambios válidos.' });
+  const invalidEnumValue = (key, values) => updates.some(([field, value]) => (
+    field === key && !values.includes(String(value))
+  ));
+  if ((resource === 'leads' && invalidEnumValue('estado', ['NUEVO', 'CONTACTADO', 'CALIFICADO', 'CONVERTIDO', 'DESCARTADO']))
+    || (resource === 'visits' && invalidEnumValue('estado', ['Pendiente', 'Confirmada', 'Completada', 'Cancelada']))
+    || (resource === 'offers' && invalidEnumValue('estado', ['PENDIENTE', 'ACEPTADA', 'RECHAZADA', 'CANCELADA']))
+    || (resource === 'rentals' && invalidEnumValue('estado', ['Activa', 'Finalizada', 'Cancelada']))
+    || (resource === 'commissions' && invalidEnumValue('estado', ['PENDIENTE', 'PAGADA'])
+      && !['administrador', 'admin'].includes(request.user.rol))) {
+    return response.status(400).json({ error: 'El estado seleccionado no es válido para este registro.' });
+  }
+  if (resource === 'visits' && updates.some(([key, value]) => (
+    (key === 'fecha_cita' && (typeof value !== 'string' || Number.isNaN(Date.parse(value))))
+    || (key === 'motivo' && !isValidOptionalString(value, 500))
+  ))) {
+    return response.status(400).json({ error: 'La fecha o el motivo de la visita no son válidos.' });
+  }
+  if (resource === 'rentals' && updates.some(([key, value]) => (
+    key === 'fecha_fin' && value !== null && value !== '' && !isValidDateOnly(value)
+  ))) {
+    return response.status(400).json({ error: 'La fecha de término de la renta no es válida.' });
+  }
+  if (resource === 'offers' && updates.some(([key, value]) => (
+    key === 'notas' && !isValidOptionalString(value, 2000)
+  ))) {
+    return response.status(400).json({ error: 'Las notas de la oferta no deben superar 2000 caracteres.' });
+  }
   if (resource === 'maintenance' && updates.some(([key, value]) => (
     (key === 'estado' && !['pendiente', 'en_proceso', 'completada', 'cancelada'].includes(value))
     || (key === 'asignado_a' && value !== null && value !== ''
       && (!Number.isSafeInteger(Number(value)) || Number(value) <= 0))
     || (key === 'costo_final' && value !== null && value !== ''
       && (!Number.isFinite(Number(value)) || Number(value) < 0))
+    || (key === 'prioridad' && !['automatica', 'baja', 'normal', 'alta', 'urgente'].includes(value))
+    || (key === 'fecha_limite' && value !== null && value !== '' && !isValidDateOnly(value))
   ))) {
-    return response.status(400).json({ error: 'El estado, responsable o costo final no es válido.' });
+    return response.status(400).json({ error: 'El estado, prioridad, fecha límite, responsable o costo final no es válido.' });
   }
   if (resource === 'payments' && updates.some(([key, value]) => (
     key === 'estado' && !['PENDIENTE', 'PAGADO', 'VENCIDO'].includes(String(value).toUpperCase())
@@ -1650,8 +1891,17 @@ router.patch('/:resource/:id', requireAuth, async (request, response, next) => {
         if (!validAssignee.rowCount) return response.status(400).json({ error: 'El responsable seleccionado no está activo o no puede atender solicitudes.' });
       }
     }
-    const values = updates.map(([, value]) => value);
-    let assignments = updates.map(([key], index) => `${key} = $${index + 1}`).join(', ');
+    const databaseUpdates = updates.flatMap(([key, value]) => {
+      if (resource === 'maintenance' && key === 'prioridad') {
+        return value === 'automatica'
+          ? [['prioridad_automatica', true]]
+          : [['prioridad', value], ['prioridad_automatica', false]];
+      }
+      if (resource === 'maintenance' && key === 'fecha_limite' && value === '') return [[key, null]];
+      return [[key, value]];
+    });
+    const values = databaseUpdates.map(([, value]) => value);
+    let assignments = databaseUpdates.map(([key], index) => `${key} = $${index + 1}`).join(', ');
     if (resource === 'payments') {
       const stateUpdate = updates.find(([key]) => key === 'estado');
       if (stateUpdate) {

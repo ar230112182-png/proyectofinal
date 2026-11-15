@@ -1,7 +1,7 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-set "APP_IP=192.168.1.247"
+set "APP_IP=192.168.1.139"
 set "APP_PORT=3007"
 set "APP_URL=http://%APP_IP%:%APP_PORT%"
 
@@ -68,6 +68,8 @@ if not defined IP_FOUND (
   echo AVISO: Este equipo no tiene asignada la IP %APP_IP%.
   echo Configura esa IP en el adaptador de red o usa la IP mostrada por ipconfig.
   echo El servidor esta iniciado, pero %APP_URL% no funcionara hasta asignar esa IP.
+  start "" "http://localhost:%APP_PORT%/"
+  exit /b 0
 )
 start "" "%APP_URL%/"
 exit /b 0

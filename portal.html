@@ -8,11 +8,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="estilo/style.css?v=3">
+  <link rel="stylesheet" href="estilo/style.css?v=19">
 </head>
 <body class="portal-page">
   <header class="portal-header">
-    <a class="portal-brand" href="/" aria-label="Bienes y Negocios Renato"><img src="estilo/logo-renato.svg" alt="Bienes y Negocios Renato"></a>
+    <a class="portal-brand" href="/" aria-label="Bienes y Negocios Renato"><img src="estilo/Logo_bienes.jpeg" alt="Bienes y Negocios Renato"></a>
     <nav class="portal-header-links" aria-label="Accesos"><a class="outline-button" href="/">Acceso de equipo</a></nav>
   </header>
   <main class="portal-main">
@@ -22,11 +22,11 @@
       <p>Consulta propiedades vigentes y cuéntanos qué estás buscando.</p>
     </section>
     <section class="portal-search" aria-label="Filtros de propiedades">
-      <label>Buscar por ubicación<input id="portal-search" type="search" placeholder="Ciudad, colonia o propiedad"></label>
+      <label>Buscar por ubicación<input id="portal-search" type="search" maxlength="200" placeholder="Ciudad, colonia o propiedad"></label>
       <label>Operación<select id="portal-operation"><option value="">Todas</option><option value="VENTA">Venta</option><option value="RENTA">Renta</option></select></label>
       <label>Tipo de propiedad<select id="portal-category"><option value="">Todos</option></select></label>
-      <label>Presupuesto mínimo<input id="portal-price-min" type="number" min="0" inputmode="numeric" placeholder="$"></label>
-      <label>Presupuesto máximo<input id="portal-price-max" type="number" min="0" inputmode="numeric" placeholder="$"></label>
+      <label>Presupuesto mínimo<input id="portal-price-min" type="number" min="0" max="999999999999.99" step="0.01" inputmode="decimal" placeholder="$"></label>
+      <label>Presupuesto máximo<input id="portal-price-max" type="number" min="0" max="999999999999.99" step="0.01" inputmode="decimal" placeholder="$"></label>
       <label>Habitaciones mínimas<select id="portal-rooms"><option value="">Cualquiera</option><option value="1">1+</option><option value="2">2+</option><option value="3">3+</option><option value="4">4+</option></select></label>
     </section>
     <p id="portal-status" class="portal-status" role="status"></p>
@@ -37,17 +37,18 @@
       <div><p class="eyebrow">Atención personalizada</p><h2>¿No encontraste lo que buscas?</h2><p>Registra tus preferencias y un asesor se pondrá en contacto contigo.</p></div>
       <form id="lead-form" class="portal-form">
         <input type="hidden" name="id_propiedad">
-        <label>Nombre<input name="nombre" required autocomplete="name"></label>
-        <label>Correo<input name="correo" type="email" autocomplete="email"></label>
-        <label>Teléfono<input name="telefono" type="tel" autocomplete="tel"></label>
-        <label>Ciudad<input name="ciudad"></label>
-        <div class="portal-form-row"><label>Presupuesto mínimo<input name="precio_min" type="number" min="0"></label><label>Presupuesto máximo<input name="precio_max" type="number" min="0"></label></div>
+        <label>Nombre<input name="nombre" maxlength="80" required autocomplete="name"></label>
+        <label>Correo<input name="correo" type="email" maxlength="254" autocomplete="email"></label>
+        <label>Teléfono<input name="telefono" type="tel" maxlength="20" pattern="[+]?[0-9() .-]{7,20}" title="Usa de 7 a 20 caracteres: números, espacios, paréntesis, guiones o +." autocomplete="tel"></label>
+        <label>Ciudad<input name="ciudad" maxlength="100"></label>
+        <div class="portal-form-row"><label>Presupuesto mínimo<input name="precio_min" type="number" min="0" max="999999999999.99" step="0.01" inputmode="decimal"></label><label>Presupuesto máximo<input name="precio_max" type="number" min="0" max="999999999999.99" step="0.01" inputmode="decimal"></label></div>
         <label class="portal-consent"><input name="consentimiento_datos" type="checkbox" required><span>Autorizo el uso de mis datos para recibir seguimiento.</span></label>
         <p id="lead-result" class="form-error" role="status"></p>
         <button class="primary-button" type="submit">Enviar solicitud</button>
       </form>
     </section>
   </main>
-  <script src="js/cruds/portal.js?v=3"></script>
+  <script src="js/cruds/select-search.js?v=3"></script>
+  <script src="js/cruds/portal.js?v=4"></script>
 </body>
 </html>

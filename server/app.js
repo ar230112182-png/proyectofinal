@@ -1,6 +1,7 @@
 require('dotenv').config();
 
 const path = require('path');
+const os = require('os');
 const express = require('express');
 const cors = require('cors');
 const pool = require('./db');
@@ -15,6 +16,16 @@ const host = process.env.HOST || '0.0.0.0';
 if (!process.env.DATABASE_URL || !process.env.JWT_SECRET) {
   console.warn('Faltan DATABASE_URL o JWT_SECRET. Copia .env.example a .env antes de iniciar.');
 }
+
+const seenClients = new Set();
+app.use((request, _response, next) => {
+  const ip = (request.socket.remoteAddress || '').replace(/^::ffff:/, '');
+  if (ip && !['127.0.0.1', '::1'].includes(ip) && !seenClients.has(ip)) {
+    seenClients.add(ip);
+    console.log(`Dispositivo conectado desde la IP ${ip} (${request.headers['user-agent'] || 'desconocido'})`);
+  }
+  next();
+});
 
 app.use(cors());
 app.use(express.json());
@@ -47,5 +58,11 @@ app.use((error, _request, response, _next) => {
 
 app.listen(port, host, () => {
   console.log(`Bienes y Negocios Renato disponible en http://localhost:${port}`);
-  console.log(`Acceso desde la red local: http://<IP-DE-ESTE-EQUIPO>:${port}`);
+  const localIps = Object.values(os.networkInterfaces())
+    .flat()
+    .filter((item) => item.family === 'IPv4' && !item.internal && !item.address.startsWith('169.254.'))
+    .map((item) => item.address);
+  for (const ip of localIps) {
+    console.log(`Acceso desde la red local: http://${ip}:${port}`);
+  }
 });

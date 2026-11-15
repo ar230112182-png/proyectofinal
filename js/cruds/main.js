@@ -19,6 +19,13 @@ const api = {
       method: 'POST',
       body: JSON.stringify({ correo, contrasena }),
     }).then((payload) => {
+      if (payload.user.rol === 'cliente') {
+        localStorage.setItem('habita_tenant_token', payload.token);
+        this.token = null;
+        localStorage.removeItem('habita_token');
+        localStorage.removeItem('habita_user');
+        return payload.user;
+      }
       this.token = payload.token;
       localStorage.setItem('habita_token', this.token);
       localStorage.setItem('habita_user', JSON.stringify(payload.user));
@@ -27,16 +34,15 @@ const api = {
   },
   async getAllPages(url, pageSize = 200) {
     const separator = url.includes('?') ? '&' : '?';
-    const rows = [];
-    let page = 1;
-    let totalPages = 1;
-    do {
-      const payload = await this.request(`${url}${separator}page=${page}&limit=${pageSize}`);
-      if (!payload.meta) return payload;
-      rows.push(...payload.data);
-      totalPages = payload.meta.totalPages;
-      page += 1;
-    } while (page <= totalPages);
+    const first = await this.request(`${url}${separator}page=1&limit=${pageSize}`);
+    if (!first.meta) return first;
+    const rows = [...first.data];
+    const remaining = [];
+    for (let page = 2; page <= first.meta.totalPages; page += 1) {
+      remaining.push(this.request(`${url}${separator}page=${page}&limit=${pageSize}`));
+    }
+    const pages = await Promise.all(remaining);
+    pages.forEach((payload) => rows.push(...payload.data));
     return { data: rows };
   },
   get(resource) {
@@ -83,6 +89,7 @@ const escapeHtml = (value) => String(value ?? '').replace(/[&<>\'"]/g, (characte
 }[character]));
 // Formatea importes en pesos mexicanos y fechas con claves locales estables.
 const formatMoney = (value) => Number(value || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 });
+const formatCommissionMoney = (value) => Number(value).toLocaleString('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 2, maximumFractionDigits: 2 });
 // Produce claves de calendario locales para comparar fechas sin hora.
 const localDateKey = (date = new Date()) => [date.getFullYear(),
   String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
@@ -96,11 +103,11 @@ const formatAlertDate = (value) => {
   const formattedDate = date.toLocaleDateString('es-MX');
   return dateOnly ? formattedDate : `${formattedDate} ${date.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}`;
 };
-const optionData = { clients: [], properties: [], users: [], categories: [], leads: [], rentals: [] };
+const optionData = { clients: [], properties: [], users: [], sellers: [], categories: [], leads: [], rentals: [] };
 // Conserva en memoria los registros que alimentan las vistas y sus formularios.
 const records = {
   properties: [], clients: [], leads: [], visits: [], matches: [], documents: [], offers: [],
-  sales: [], commissions: [], rentals: [], payments: [], contracts: [], sellers: [], reports: [],
+  sales: [], commissions: [], rentals: [], payments: [], maintenance: [], contracts: [], sellers: [], reports: [],
   users: [], activity: [],
 };
 const reportDateFilter = { from: '', to: '' };
@@ -128,68 +135,208 @@ const dateFieldByResource = {
 
 const tableConfig = {
   properties: { title: 'Propiedades registradas', columns: [['id_propiedad', 'ID'], ['titulo', 'Propiedad'], ['categoria', 'Categoría'], ['tipo_operacion', 'Operación'], ['precio', 'Precio'], ['estado_propiedad', 'Estado']], actions: ['edit', 'delete', 'map'] },
-  clients: { title: 'Clientes', columns: [['nombre', 'Nombre'], ['apellido_paterno', 'Apellido'], ['correo', 'Correo'], ['telefono', 'Teléfono'], ['ciudad', 'Ciudad'], ['activo', 'Estado'], ['fecha_registro', 'Fecha de registro']], actions: ['history', 'portal-access', 'status'] },
-  leads: { title: 'Clientes potenciales', columns: [['nombre', 'Cliente potencial'], ['correo', 'Correo'], ['telefono', 'Teléfono'], ['origen', 'Origen'], ['estado', 'Estado'], ['creado_en', 'Fecha de registro']], actions: ['status'] },
-  visits: { title: 'Agenda de visitas', columns: [['fecha_cita', 'Fecha'], ['cliente', 'Cliente'], ['propiedad', 'Propiedad'], ['agente', 'Agente'], ['estado', 'Estado']], actions: ['status'] },
-  matches: { title: 'Coincidencias guardadas', columns: [['lead', 'Cliente potencial'], ['propiedad', 'Propiedad'], ['puntuacion', 'Puntuación'], ['creada_en', 'Fecha']] },
-  documents: { title: 'Expedientes y resguardos', columns: [['nombre_archivo', 'Documento'], ['tipo', 'Tipo'], ['estado', 'Estado'], ['tamano_bytes', 'Tamaño'], ['creado_en', 'Fecha']], actions: ['download'] },
-  offers: { title: 'Ofertas', columns: [['propiedad', 'Propiedad'], ['cliente', 'Usuario'], ['monto', 'Monto'], ['tipo', 'Tipo'], ['estado', 'Estado']], actions: ['status'] },
-  sales: { title: 'Ventas cerradas', columns: [['propiedad', 'Propiedad'], ['cliente', 'Cliente'], ['precio_venta', 'Precio'], ['fecha_venta', 'Fecha']] },
-  commissions: { title: 'Comisiones', columns: [['propiedad', 'Propiedad'], ['porcentaje_agencia', '% agencia'], ['monto_operacion', 'Operación'], ['monto_total', 'Comisión'], ['estado', 'Pago'], ['creado_en', 'Fecha']], actions: ['status'] },
-  rentals: { title: 'Contratos de renta', columns: [['propiedad', 'Propiedad'], ['cliente', 'Cliente'], ['renta_mensual', 'Renta mensual'], ['fecha_inicio', 'Inicio'], ['fecha_fin', 'Fin'], ['estado', 'Estado']], actions: ['status'] },
-  payments: { title: 'Cobros de renta', columns: [['propiedad', 'Propiedad'], ['cliente', 'Cliente'], ['periodo', 'Periodo'], ['monto', 'Monto'], ['estado', 'Estado'], ['pagado_en', 'Pagado']] , actions: ['status', 'receipt'] },
-  maintenance: { title: 'Solicitudes de mantenimiento', columns: [['propiedad', 'Propiedad'], ['titulo', 'Solicitud'], ['prioridad', 'Prioridad'], ['estado', 'Estado'], ['asignado', 'Responsable'], ['costo_estimado', 'Costo estimado'], ['costo_final', 'Costo final'], ['fecha_limite', 'Fecha límite']], actions: ['status'] },
-  contracts: { title: 'Contratos registrados', columns: [['tipo_operacion', 'Operación'], ['cliente', 'Cliente'], ['vendedor', 'Vendedor'], ['propiedad', 'Lote'], ['precio_total', 'Precio'], ['superficie_m2', 'Superficie m²'], ['fecha_contrato', 'Fecha']], actions: ['document', 'map'] },
-  sellers: { title: 'Vendedores', columns: [['nombre', 'Nombre'], ['apellido_paterno', 'Apellido'], ['correo', 'Correo'], ['telefono', 'Teléfono'], ['rol', 'Rol'], ['activo', 'Estado'], ['comision_mes', 'Comisión del mes']], actions: ['edit', 'status', 'delete'] },
-  users: { title: 'Usuarios y administradores', columns: [['nombre', 'Nombre'], ['apellido_paterno', 'Apellido'], ['correo', 'Correo'], ['telefono', 'Teléfono'], ['rol', 'Función'], ['activo', 'Estado'], ['fecha_registro', 'Fecha de registro']], actions: ['edit', 'status', 'delete'] },
-  reports: { title: 'Reportes de vendedores', columns: [['id', 'ID'], ['vendedor', 'Vendedor'], ['cobros', 'Cobros'], ['operacion', 'Operación'], ['propiedad', 'Propiedad'], ['fecha', 'Fecha'], ['actividad', 'Actividad']] },
+  clients: { title: 'Clientes', columns: [['id_cliente', 'ID'], ['nombre', 'Nombre'], ['apellido_paterno', 'Apellido'], ['correo', 'Correo'], ['telefono', 'Teléfono'], ['ciudad', 'Ciudad'], ['activo', 'Estado'], ['fecha_registro', 'Fecha de registro']], actions: ['history', 'portal-access', 'status'] },
+  leads: { title: 'Clientes potenciales', columns: [['id_lead', 'ID'], ['nombre', 'Cliente potencial'], ['correo', 'Correo'], ['telefono', 'Teléfono'], ['origen', 'Origen'], ['estado', 'Estado'], ['creado_en', 'Fecha de registro']], actions: ['status'] },
+  visits: { title: 'Agenda de visitas', columns: [['id_cita', 'ID'], ['fecha_cita', 'Fecha'], ['cliente', 'Cliente'], ['propiedad', 'Propiedad'], ['agente', 'Agente'], ['estado', 'Estado']], actions: ['status'] },
+  matches: { title: 'Coincidencias guardadas', columns: [['id_coincidencia', 'ID'], ['lead', 'Cliente potencial'], ['propiedad', 'Propiedad'], ['puntuacion', 'Puntuación'], ['creada_en', 'Fecha']] },
+  documents: { title: 'Expedientes y resguardos', columns: [['id_documento', 'ID'], ['nombre_archivo', 'Documento'], ['tipo', 'Tipo'], ['estado', 'Estado'], ['tamano_bytes', 'Tamaño'], ['creado_en', 'Fecha']], actions: ['download'] },
+  offers: { title: 'Ofertas', columns: [['id_oferta', 'ID'], ['propiedad', 'Propiedad'], ['cliente', 'Usuario'], ['monto', 'Monto'], ['tipo', 'Tipo'], ['estado', 'Estado']], actions: ['status'] },
+  sales: { title: 'Ventas cerradas', columns: [['id_venta', 'ID'], ['propiedad', 'Propiedad'], ['cliente', 'Cliente'], ['precio_venta', 'Precio'], ['fecha_venta', 'Fecha']] },
+  commissions: { title: 'Comisiones', columns: [['id_comision', 'ID'], ['vendedor', 'Vendedor'], ['cliente', 'Cliente'], ['propiedad', 'Propiedad'], ['porcentaje_agencia', '% comisión'], ['monto_operacion', 'Valor propiedad'], ['monto_total', 'Comisión'], ['estado', 'Pago'], ['es_demo', 'Registro'], ['creado_en', 'Fecha']], actions: ['status'] },
+  rentals: { title: 'Contratos de renta', columns: [['id_renta', 'ID'], ['propiedad', 'Propiedad'], ['cliente', 'Cliente'], ['renta_mensual', 'Renta mensual'], ['fecha_inicio', 'Inicio'], ['fecha_fin', 'Fin'], ['estado', 'Estado']], actions: ['status'] },
+  payments: { title: 'Cobros de renta', columns: [['id_pago', 'ID'], ['propiedad', 'Propiedad'], ['cliente', 'Cliente'], ['periodo', 'Periodo'], ['monto', 'Monto'], ['estado', 'Estado'], ['pagado_en', 'Pagado']] , actions: ['status', 'receipt'] },
+  maintenance: { title: 'Solicitudes de mantenimiento', columns: [['id_solicitud', 'ID'], ['propiedad', 'Propiedad'], ['titulo', 'Solicitud'], ['descripcion', 'Descripción'], ['solicitante', 'Solicitante'], ['prioridad', 'Prioridad'], ['estado', 'Estado'], ['asignado', 'Responsable'], ['costo_estimado', 'Costo estimado'], ['costo_final', 'Costo final'], ['fecha_limite', 'Fecha límite']], actions: ['status'] },
+  contracts: { title: 'Contratos registrados', columns: [['id_contrato', 'ID'], ['tipo_operacion', 'Operación'], ['cliente', 'Cliente'], ['vendedor', 'Vendedor'], ['propiedad', 'Lote'], ['precio_total', 'Precio'], ['superficie_m2', 'Superficie m²'], ['fecha_contrato', 'Fecha']], actions: ['document', 'map'] },
+  sellers: { title: 'Vendedores', columns: [['id_usuario', 'ID'], ['nombre', 'Nombre'], ['apellido_paterno', 'Apellido'], ['correo', 'Correo'], ['telefono', 'Teléfono'], ['rol', 'Rol'], ['activo', 'Estado'], ['comision_mes', 'Comisión del mes']], actions: ['edit', 'status', 'delete'] },
+  users: { title: 'Usuarios y administradores', columns: [['id_usuario', 'ID'], ['nombre', 'Nombre'], ['apellido_paterno', 'Apellido'], ['correo', 'Correo'], ['telefono', 'Teléfono'], ['rol', 'Función'], ['activo', 'Estado'], ['fecha_registro', 'Fecha de registro']], actions: ['edit', 'status', 'delete'] },
+  reports: { title: 'Reportes de vendedores', columns: [['id', 'ID'], ['vendedor', 'Vendedor'], ['cobros', 'Monto'], ['operacion', 'Operación'], ['propiedad', 'Propiedad'], ['fecha', 'Fecha'], ['actividad', 'Actividad']], actions: ['report-pdf'] },
+};
+let clientTableTab = 'todos';
+const clientColumns = {
+  clients: new Set(['id_cliente', 'nombre', 'correo', 'telefono', 'activo', 'fecha_registro']),
+  leads: new Set(['id_lead', 'nombre', 'correo', 'telefono', 'estado', 'creado_en']),
 };
 
 // Define los campos y recursos asociados a cada formulario del sistema.
 const forms = {
   property: { title: 'Nueva propiedad', resource: 'properties', fields: [
-    ['titulo', 'Título', 'text', true], ['categoria', 'Categoría', 'select', true, ['Casa', 'Lote baldío']], ['tipo_operacion', 'Operación', 'select', true, ['VENTA', 'RENTA']],
-    ['precio', 'Precio', 'number', true], ['descripcion', 'Descripción', 'textarea'], ['superficie', 'Superficie m²', 'number'],
+    ['', 'Datos de la propiedad', 'section'],
+    ['titulo', 'Título', 'text', true], ['categoria', 'Categoría', 'options', true, 'categories', false], ['tipo_operacion', 'Operación', 'select', true, ['VENTA', 'RENTA'], false],
+    ['costo_adquisicion', 'Costo de adquisición', 'number', true],
+    ['precio', 'Precio de venta o renta', 'number', true], ['descripcion', 'Descripción', 'textarea'],
+    ['', 'Características', 'section'],
+    ['superficie', 'Superficie m²', 'number'],
     ['habitaciones', 'Habitaciones', 'number'], ['banos', 'Baños', 'number'], ['estacionamientos', 'Estacionamientos', 'number'],
-    ['imagen_url', 'Imagen de la propiedad (URL)', 'url'], ['latitud', 'Latitud de Google Maps', 'number'], ['longitud', 'Longitud de Google Maps', 'number'],
+    ['', 'Ubicación', 'section'],
     ['calle', 'Calle', 'text', true], ['numero', 'Número', 'text'], ['colonia', 'Colonia', 'text'], ['ciudad', 'Ciudad', 'text', true], ['estado', 'Estado', 'text', true], ['codigo_postal', 'Código postal', 'text'],
+    ['ubicacion_mapa', 'Ubicación en Google Maps', 'map'],
+    ['', 'Fotografía', 'section'],
+    ['imagen', 'Imagen de la propiedad (JPEG, PNG o WebP; máximo 10 MB)', 'file'],
   ] },
-  client: { title: 'Nuevo cliente', resource: 'clients', fields: [['nombre', 'Nombre', 'text', true], ['apellido_paterno', 'Apellido paterno', 'text', true], ['apellido_materno', 'Apellido materno', 'text'], ['correo', 'Correo', 'email', true], ['telefono', 'Teléfono', 'tel'], ['curp', 'CURP', 'text'], ['direccion', 'Dirección', 'text'], ['ciudad', 'Ciudad', 'text'], ['estado', 'Estado', 'text'], ['codigo_postal', 'Código postal', 'text']] },
-  lead: { title: 'Nuevo cliente potencial', resource: 'leads', fields: [['nombre', 'Nombre', 'text', true], ['correo', 'Correo', 'email'], ['telefono', 'Teléfono', 'tel'], ['ciudad', 'Ciudad preferida', 'text'], ['precio_min', 'Precio mínimo', 'number'], ['precio_max', 'Precio máximo', 'number'], ['habitaciones_min', 'Habitaciones mínimas', 'number'], ['tipo', 'Categoría', 'text'], ['operacion', 'Operación', 'select', false, ['VENTA', 'RENTA']]] },
+  client: { title: 'Nuevo cliente', resource: 'clients', fields: [
+    ['', 'Datos personales', 'section'],
+    ['nombre', 'Nombre', 'text', true], ['apellido_paterno', 'Apellido paterno', 'text', true], ['apellido_materno', 'Apellido materno', 'text'], ['curp', 'CURP', 'text'],
+    ['', 'Contacto', 'section'],
+    ['correo', 'Correo', 'email', true], ['telefono', 'Teléfono', 'tel'],
+    ['', 'Domicilio', 'section'],
+    ['direccion', 'Dirección', 'text'], ['ciudad', 'Ciudad', 'text'], ['estado', 'Estado', 'text'], ['codigo_postal', 'Código postal', 'text'],
+  ] },
+  lead: { title: 'Nuevo cliente potencial', resource: 'leads', fields: [
+    ['', 'Contacto', 'section'],
+    ['nombre', 'Nombre', 'text', true], ['correo', 'Correo', 'email'], ['telefono', 'Teléfono', 'tel'],
+    ['', 'Preferencias de búsqueda', 'section'],
+    ['ciudad', 'Ciudad preferida', 'text'], ['tipo', 'Categoría', 'text'], ['operacion', 'Operación', 'select', false, ['VENTA', 'RENTA']],
+    ['precio_min', 'Precio mínimo', 'number'], ['precio_max', 'Precio máximo', 'number'], ['habitaciones_min', 'Habitaciones mínimas', 'number'],
+  ] },
   visit: { title: 'Agendar visita', resource: 'visits', fields: [['id_cliente', 'Cliente', 'options', true, 'clients'], ['id_propiedad', 'Propiedad', 'options', true, 'properties'], ['fecha_cita', 'Fecha y hora', 'datetime-local', true], ['motivo', 'Motivo', 'text']] },
   offer: { title: 'Registrar oferta', resource: 'offers', fields: [['id_propiedad', 'Propiedad', 'options', true, 'properties'], ['monto', 'Monto ofrecido', 'number', true], ['tipo', 'Tipo de oferta', 'select', true, ['OFERTA', 'CONTRAPROPUESTA']], ['notas', 'Notas', 'textarea']] },
   document: { title: 'Cargar resguardo', resource: 'documents', fields: [['id_propiedad', 'Propiedad', 'options', true, 'properties'], ['tipo', 'Tipo de documento', 'select', true, ['Escritura', 'Identificación', 'Predial', 'Contrato', 'Otro']], ['archivo', 'Archivo (PDF, DOC o imagen; máximo 10 MB)', 'file', true]] },
   sale: { title: 'Cerrar venta', resource: 'sales', fields: [['id_propiedad', 'Propiedad', 'options', true, 'properties'], ['id_cliente', 'Cliente', 'options', true, 'clients'], ['id_agente', 'Agente responsable', 'options', true, 'users'], ['precio_venta', 'Precio de cierre', 'number', true], ['fecha_venta', 'Fecha de cierre', 'date']] },
-  commission: { title: 'Registrar comisión', resource: 'commissions', fields: [['id_propiedad', 'Propiedad', 'options', true, 'properties'], ['porcentaje_agencia', 'Porcentaje de agencia', 'number'], ['monto_operacion', 'Monto de operación', 'number', true], ['monto_total', 'Monto de comisión', 'number', true]] },
+  commission: { title: 'Registrar comisión', resource: 'commissions', fields: [['id_agente_vendedor', 'Vendedor', 'options', true, 'sellers'], ['id_cliente', 'Cliente', 'options', true, 'clients'], ['id_propiedad', 'Propiedad', 'options', true, 'properties']] },
   rental: { title: 'Nueva renta', resource: 'rentals', fields: [['id_propiedad', 'Propiedad', 'options', true, 'properties'], ['id_cliente', 'Cliente', 'options', true, 'clients'], ['renta_mensual', 'Renta mensual', 'number', true], ['fecha_inicio', 'Fecha de inicio', 'date', true], ['fecha_fin', 'Fecha de término', 'date']] },
   maintenance: { title: 'Nueva solicitud de mantenimiento', resource: 'maintenance', fields: [
+    ['', 'Inmueble', 'section'],
     ['id_propiedad', 'Propiedad', 'options', true, 'properties'],
     ['id_renta', 'Contrato de renta (opcional)', 'options', false, 'rentals'],
+    ['', 'Solicitud', 'section'],
     ['titulo', 'Asunto', 'text', true], ['descripcion', 'Descripción', 'textarea', true],
-    ['prioridad', 'Prioridad', 'select', true, ['baja', 'normal', 'alta', 'urgente']],
+    ['prioridad', 'Prioridad', 'select', true, [{ id: 'automatica', nombre: 'Automática según fecha límite' }, 'baja', 'normal', 'alta', 'urgente']],
     ['asignado_a', 'Asignar a', 'options', false, 'users'],
+    ['', 'Costo y plazo', 'section'],
     ['costo_estimado', 'Costo estimado', 'number'], ['fecha_limite', 'Fecha límite', 'date'],
   ] },
   payment: { title: 'Registrar cobro', resource: 'payments', fields: [['id_renta', 'Contrato de renta', 'options', true, 'rentals'], ['periodo', 'Periodo de pago', 'date', true], ['monto', 'Monto recibido', 'number', true], ['estado', 'Estado del pago', 'select', true, ['PAGADO', 'PENDIENTE']]] },
-  seller: { title: 'Agregar vendedor', resource: 'users', fields: [['nombre', 'Nombre', 'text', true], ['apellido_paterno', 'Apellido paterno', 'text', true], ['apellido_materno', 'Apellido materno', 'text'], ['correo', 'Correo', 'email', true], ['telefono', 'Teléfono', 'tel'], ['password', 'Contraseña inicial (mínimo 12 caracteres)', 'password', true], ['rol', 'Función', 'select', true, [{ id: 'vendedor', nombre: 'Vendedor' }]]] },
-  user: { title: 'Agregar usuario o administrador', resource: 'users', fields: [['nombre', 'Nombre', 'text', true], ['apellido_paterno', 'Apellido paterno', 'text', true], ['apellido_materno', 'Apellido materno', 'text'], ['correo', 'Correo', 'email', true], ['telefono', 'Teléfono', 'tel'], ['password', 'Contraseña inicial (mínimo 12 caracteres)', 'password', true], ['rol', 'Función', 'select', true, [{ id: 'usuario', nombre: 'Usuario' }, { id: 'administrador', nombre: 'Administrador' }]]] },
+  seller: { title: 'Agregar vendedor', resource: 'users', fields: [
+    ['', 'Datos personales', 'section'],
+    ['nombre', 'Nombre', 'text', true], ['apellido_paterno', 'Apellido paterno', 'text', true], ['apellido_materno', 'Apellido materno', 'text'],
+    ['', 'Contacto y acceso', 'section'],
+    ['correo', 'Correo', 'email', true], ['telefono', 'Teléfono', 'tel'], ['password', 'Contraseña inicial (mínimo 12 caracteres)', 'password', true], ['rol', 'Función', 'select', true, [{ id: 'vendedor', nombre: 'Vendedor' }]],
+  ] },
+  user: { title: 'Agregar usuario o administrador', resource: 'users', fields: [
+    ['', 'Datos personales', 'section'],
+    ['nombre', 'Nombre', 'text', true], ['apellido_paterno', 'Apellido paterno', 'text', true], ['apellido_materno', 'Apellido materno', 'text'],
+    ['', 'Contacto y acceso', 'section'],
+    ['correo', 'Correo', 'email', true], ['telefono', 'Teléfono', 'tel'], ['password', 'Contraseña inicial (mínimo 12 caracteres)', 'password', true], ['rol', 'Función', 'select', true, [{ id: 'usuario', nombre: 'Usuario' }, { id: 'administrador', nombre: 'Administrador' }]],
+  ] },
   contract: { title: 'Registrar cliente y contrato', resource: 'contracts', fields: [
-    ['tipo_operacion', 'Tipo de operación', 'select', true, ['VENTA', 'RENTA']],
+    ['', 'Operación y propiedad', 'section'],
+    ['tipo_operacion', 'Tipo de operación', 'select', true, ['VENTA', 'RENTA'], false],
     ['id_propiedad', 'Lote / propiedad', 'options', true, 'properties'],
-    ['id_cliente', 'Cliente', 'select', true, [{ id: 'nuevo', nombre: 'Registrar nuevo cliente' }, ...optionData.clients]],
+    ['fecha_contrato', 'Fecha del contrato', 'date'],
+    ['', 'Datos del cliente', 'section'],
+    ['id_cliente', 'Cliente', 'select', true, [{ id: 'nuevo', nombre: 'Registrar nuevo cliente' }, ...optionData.clients], 'combobox'],
     ['cliente_nombre', 'Nombre del cliente', 'text', true], ['cliente_apellido_paterno', 'Apellido paterno', 'text', true],
     ['cliente_apellido_materno', 'Apellido materno', 'text'], ['cliente_correo', 'Correo del cliente', 'email', true],
     ['cliente_telefono', 'Teléfono', 'tel'], ['cliente_curp', 'CURP', 'text'],
     ['cliente_direccion', 'Domicilio del cliente', 'text'], ['cliente_ciudad', 'Ciudad del cliente', 'text'],
     ['cliente_estado', 'Estado del cliente', 'text'], ['cliente_codigo_postal', 'Código postal del cliente', 'text'],
-    ['precio_total', 'Precio total acordado', 'number', true], ['fecha_contrato', 'Fecha del contrato', 'date'],
+    ['', 'Condiciones de la operación', 'section'],
+    ['precio_total', 'Precio total acordado', 'number', true],
+    ['renta_mensual', 'Renta mensual', 'number'], ['fecha_inicio', 'Inicio de renta', 'date'],
+    ['fecha_fin', 'Fin de renta', 'date'],
+    ['', 'Medidas de la propiedad', 'section'],
     ['frente_metros', 'Medida de frente (m)', 'number', true], ['fondo_metros', 'Medida de fondo (m)', 'number', true],
     ['superficie_m2', 'Superficie total (m²)', 'number', true],
+    ['', 'Ubicación y observaciones', 'section'],
     ['latitud', 'Latitud (obligatoria en venta)', 'number'], ['longitud', 'Longitud (obligatoria en venta)', 'number'],
-    ['renta_mensual', 'Renta mensual', 'number'], ['fecha_inicio', 'Inicio de renta', 'date'],
-    ['fecha_fin', 'Fin de renta', 'date'], ['observaciones', 'Condiciones y observaciones', 'textarea'],
+    ['observaciones', 'Condiciones y observaciones', 'textarea'],
   ] },
 };
+
+const fieldRules = {
+  nombre: { maxLength: 80, autocomplete: 'given-name', personName: true },
+  apellido_paterno: { maxLength: 80, autocomplete: 'family-name', personName: true },
+  apellido_materno: { maxLength: 80, personName: true },
+  cliente_nombre: { maxLength: 80, personName: true },
+  cliente_apellido_paterno: { maxLength: 80, personName: true },
+  cliente_apellido_materno: { maxLength: 80, personName: true },
+  cliente_correo: { maxLength: 254, autocomplete: 'email' },
+  correo: { maxLength: 254, autocomplete: 'email' },
+  cliente_telefono: { maxLength: 20, pattern: '[+]?[0-9() .-]{7,20}', autocomplete: 'tel' },
+  telefono: { maxLength: 20, pattern: '[+]?[0-9() .-]{7,20}', autocomplete: 'tel' },
+  curp: { maxLength: 18, pattern: '[A-Za-z]{4}[0-9]{6}[HhMm][A-Za-z]{5}[A-Za-z0-9][0-9]', transform: 'uppercase' },
+  cliente_curp: { maxLength: 18, pattern: '[A-Za-z]{4}[0-9]{6}[HhMm][A-Za-z]{5}[A-Za-z0-9][0-9]', transform: 'uppercase' },
+  codigo_postal: { maxLength: 5, pattern: '[0-9]{5}', inputmode: 'numeric' },
+  cliente_codigo_postal: { maxLength: 5, pattern: '[0-9]{5}', inputmode: 'numeric' },
+  titulo: { maxLength: 200 },
+  descripcion: { maxLength: 2000 },
+  observaciones: { maxLength: 2000 },
+  motivo: { maxLength: 500 },
+  notas: { maxLength: 2000 },
+  direccion: { maxLength: 250 },
+  cliente_direccion: { maxLength: 250 },
+  imagen_url: { maxLength: 2048 },
+  precio: { min: '0.01', max: '999999999999.99', step: '0.01' },
+  costo_adquisicion: { min: '0.01', max: '999999999999.99', step: '0.01' },
+  precio_total: { min: '0.01', max: '999999999999.99', step: '0.01' },
+  precio_venta: { min: '0.01', max: '999999999999.99', step: '0.01' },
+  renta_mensual: { min: '0.01', max: '999999999999.99', step: '0.01' },
+  monto: { min: '0.01', max: '999999999999.99', step: '0.01' },
+  monto_operacion: { min: '0.01', max: '999999999999.99', step: '0.01' },
+  monto_total: { min: '0.01', max: '999999999999.99', step: '0.01' },
+  costo_estimado: { min: '0', max: '999999999999.99', step: '0.01' },
+  costo_final: { min: '0', max: '999999999999.99', step: '0.01' },
+  precio_min: { min: '0', max: '999999999999.99', step: '0.01' },
+  precio_max: { min: '0', max: '999999999999.99', step: '0.01' },
+  porcentaje_agencia: { min: '0', max: '100', step: '0.01' },
+  superficie: { min: '0.01', max: '999999.99', step: '0.01' },
+  superficie_m2: { min: '0.01', max: '999999.99', step: '0.01' },
+  frente_metros: { min: '0.01', max: '999999.99', step: '0.01' },
+  fondo_metros: { min: '0.01', max: '999999.99', step: '0.01' },
+  habitaciones: { min: '0', max: '100', step: '1' },
+  banos: { min: '0', max: '100', step: '1' },
+  estacionamientos: { min: '0', max: '100', step: '1' },
+  habitaciones_min: { min: '0', max: '100', step: '1' },
+  latitud: { min: '-90', max: '90', step: 'any' },
+  longitud: { min: '-180', max: '180', step: 'any' },
+  password: { minLength: 12, maxLength: 128, autocomplete: 'new-password' },
+  archivo: { maxSize: 10 * 1024 * 1024 },
+};
+
+function applyFieldRules(input, name) {
+  const rules = fieldRules[name] || {};
+  Object.entries(rules).forEach(([key, value]) => {
+    if (key === 'minLength') input.minLength = value;
+    else if (key === 'maxLength') input.maxLength = value;
+    else if (key === 'min' || key === 'max' || key === 'step') input[key] = value;
+    else if (key === 'pattern') input.pattern = value;
+    else if (key === 'autocomplete') input.autocomplete = value;
+    else if (key === 'inputmode') input.inputMode = value;
+    else if (key === 'maxSize') input.dataset.maxSize = String(value);
+  });
+  if (!rules.maxLength && ['text', 'email', 'tel', 'url', 'password'].includes(input.type)) input.maxLength = 200;
+  if (input.tagName === 'TEXTAREA' && !rules.maxLength) input.maxLength = 2000;
+  if (name === 'archivo') input.title = 'El archivo no debe superar 10 MB.';
+  if (rules.pattern) input.title = name.includes('telefono')
+    ? 'Usa de 7 a 20 caracteres: números, espacios, paréntesis, guiones o +.'
+    : name.includes('codigo_postal')
+      ? 'El código postal debe contener 5 dígitos.'
+      : 'Captura un CURP válido de 18 caracteres.';
+  if (input.required && ['text', 'email', 'tel', 'url', 'password'].includes(input.type)) {
+    input.addEventListener('input', () => {
+      if (!input.value.trim()) input.setCustomValidity('Este campo es obligatorio.');
+      else if (!rules.personName) input.setCustomValidity('');
+    });
+  }
+  if (input.tagName === 'TEXTAREA' && input.required) {
+    input.addEventListener('input', () => {
+      input.setCustomValidity(input.value.trim() ? '' : 'Este campo es obligatorio.');
+    });
+  }
+  if (rules.personName) {
+    input.addEventListener('input', () => {
+      const value = input.value.trim();
+      input.setCustomValidity((input.required && !value)
+        ? 'Este campo es obligatorio.'
+        : (value && !/^[\p{L}\p{M}][\p{L}\p{M}\s.'’-]*$/u.test(value)
+          ? 'Usa únicamente letras, espacios, apóstrofos, puntos o guiones.'
+          : ''));
+    });
+  }
+  if (rules.transform === 'uppercase') {
+    input.addEventListener('input', () => { input.value = input.value.toUpperCase(); });
+  }
+}
 
 // Controla la visibilidad de acceso y los mensajes breves de resultado.
 function showLogin() {
@@ -224,7 +371,7 @@ function ensureDialog() {
 
 // Crea un control HTML segun la definicion del campo del formulario.
 function renderField(field) {
-  const [name, label, type, required, options] = field;
+  const [name, label, type, required, options, searchable = true] = field;
   let input;
   if (type === 'textarea') {
     input = document.createElement('textarea');
@@ -232,23 +379,114 @@ function renderField(field) {
   } else if (type === 'select' || type === 'options') {
     input = document.createElement('select');
     const values = type === 'options'
-      ? optionData[options]
+      ? (name === 'categoria' && options === 'categories'
+        ? optionData.categories.map((item) => ({ id: item.nombre, nombre: item.nombre }))
+        : optionData[options])
       : options.map((value) => typeof value === 'string' ? { id: value, nombre: value } : value);
     input.innerHTML = `<option value="">Selecciona...</option>${values.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.nombre)}</option>`).join('')}`;
   } else {
     input = document.createElement('input');
     input.type = type;
     if (type === 'number') input.step = 'any';
-    if (type === 'file') input.accept = '.pdf,.doc,.docx,.jpg,.jpeg,.png,.webp';
+    if (type === 'file') input.accept = name === 'imagen' ? 'image/jpeg,image/png,image/webp' : '.pdf,.doc,.docx,.jpg,.jpeg,.png,.webp';
   }
   input.name = name;
   input.required = Boolean(required);
-  if (name === 'password') input.minLength = 12;
+  applyFieldRules(input, name);
   const wrapper = document.createElement('label');
   wrapper.className = 'workflow-field';
-  wrapper.innerHTML = `<span>${escapeHtml(label)}</span>`;
+  wrapper.innerHTML = `<span>${escapeHtml(label)}${required ? ' <span class="workflow-required" aria-hidden="true">*</span>' : ''}</span>`;
   wrapper.append(input);
+  if (type === 'options' && searchable || searchable === 'combobox') input.dataset.searchableSelect = 'true';
   return wrapper;
+}
+
+function enableWorkflowSearchableSelects(container) {
+  container.querySelectorAll('select[data-searchable-select]').forEach((select) => {
+    const label = select.closest('.workflow-field').querySelector('span').textContent.replace(/\s*\*$/, '');
+    enableSearchableSelect(select, label);
+  });
+}
+
+function coordinatesFromMapLocation(value) {
+  const text = value.trim();
+  const number = '[-+]?(?:\\d+(?:\\.\\d+)?|\\.\\d+)';
+  const pair = new RegExp(`^\\s*(${number})\\s*,\\s*(${number})\\s*$`);
+  let match = text.match(pair);
+  if (!match) {
+    let url;
+    try {
+      url = new URL(text);
+    } catch {
+      return null;
+    }
+    if (url.protocol !== 'https:' || !/(^|\.)google\.(?:[a-z]{2,3}\.)?[a-z]{2,3}$/i.test(url.hostname)
+      || !url.pathname.startsWith('/maps')) return null;
+    match = url.href.match(new RegExp(`!3d(${number})!4d(${number})(?:[!?#]|$)`));
+    if (!match) {
+      const query = url.searchParams.get('query') || url.searchParams.get('q') || url.searchParams.get('ll');
+      if (query) match = query.match(pair);
+    }
+    if (!match) {
+      let pathname;
+      try {
+        pathname = decodeURIComponent(url.pathname);
+      } catch {
+        return null;
+      }
+      match = pathname.match(new RegExp(`/maps/(?:place|search)/(${number})\\s*,\\s*(${number})(?:/|$)`));
+    }
+  }
+  if (!match || Math.abs(Number(match[1])) > 90 || Math.abs(Number(match[2])) > 180) return null;
+  return { latitud: match[1], longitud: match[2] };
+}
+
+function renderMapLocationField() {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'workflow-field workflow-map-field';
+  wrapper.innerHTML = `<span>Ubicación en Google Maps (opcional)</span>
+    <a class="outline-button" href="https://www.google.com/maps" target="_blank" rel="noopener noreferrer">Abrir Google Maps</a>
+    <label>Enlace o coordenadas del pin
+      <input type="text" data-map-location maxlength="2048" placeholder="Ej. 19.4326, -99.1332" aria-describedby="map-location-hint map-location-status">
+    </label>
+    <small class="workflow-field-hint" id="map-location-hint">En Google Maps haz clic derecho en el lugar y copia sus coordenadas, o pega la dirección completa del navegador con el pin. Los enlaces cortos no son compatibles.</small>
+    <small class="workflow-field-hint" id="map-location-status" role="status"></small>
+    <input type="hidden" name="latitud"><input type="hidden" name="longitud">`;
+  const input = wrapper.querySelector('[data-map-location]');
+  const latitude = wrapper.querySelector('[name="latitud"]');
+  const longitude = wrapper.querySelector('[name="longitud"]');
+  const status = wrapper.querySelector('#map-location-status');
+  input.addEventListener('input', () => {
+    const text = input.value.trim();
+    const coordinates = text ? coordinatesFromMapLocation(text) : null;
+    latitude.value = coordinates ? coordinates.latitud : '';
+    longitude.value = coordinates ? coordinates.longitud : '';
+    input.setCustomValidity(text && !coordinates
+      ? 'Pega coordenadas válidas o la dirección completa de Google Maps que incluya el pin.'
+      : '');
+    status.textContent = coordinates ? `Ubicación seleccionada: ${coordinates.latitud}, ${coordinates.longitud}` : '';
+  });
+  return wrapper;
+}
+
+function renderFormSections(definitions, render = renderField) {
+  const sections = [];
+  let grid;
+  definitions.forEach((field) => {
+    if (field[2] === 'section') {
+      const section = document.createElement('section');
+      section.className = 'workflow-form-section';
+      const heading = document.createElement('h3');
+      heading.textContent = field[1];
+      grid = document.createElement('div');
+      grid.className = 'workflow-form-grid';
+      section.append(heading, grid);
+      sections.push(section);
+    } else {
+      grid.append(field[2] === 'map' ? renderMapLocationField() : render(field));
+    }
+  });
+  return sections;
 }
 
 // Configura el formulario solicitado y aplica los comportamientos propios del tipo.
@@ -261,11 +499,79 @@ function openForm(kind, titleOverride) {
   dialog.querySelector('h2').textContent = titleOverride || config.title;
   dialog.querySelector('.form-error').textContent = '';
   const fields = dialog.querySelector('.workflow-fields');
-  fields.replaceChildren(...config.fields.map(renderField));
+  const content = config.fields.some((field) => field[2] === 'section')
+    ? renderFormSections(config.fields)
+    : config.fields.map((field) => field[2] === 'map' ? renderMapLocationField() : renderField(field));
+  fields.replaceChildren(...content);
+  form.noValidate = false;
   if (kind === 'property') configurePropertyForm(form);
   if (kind === 'contract') configureContractForm(form);
-  if (kind === 'maintenance') configureMaintenanceForm(form);
+  if (kind === 'maintenance') {
+    configureMaintenanceForm(form);
+    form.querySelector('[name="prioridad"]').value = 'automatica';
+  }
+  if (kind === 'commission') configureCommissionForm(form);
+  enableWorkflowSearchableSelects(form);
   dialog.showModal();
+}
+
+function validateWorkflowForm(form) {
+  const kind = form.dataset.kind;
+  const value = (name) => String(new FormData(form).get(name) || '').trim();
+  const invalid = (message) => {
+    const error = form.closest('dialog')?.querySelector('.form-error');
+    if (error) error.textContent = message;
+    return false;
+  };
+  const validDate = (date) => !date || /^\d{4}-\d{2}-\d{2}$/.test(date)
+    && !Number.isNaN(Date.parse(`${date}T00:00:00Z`))
+    && new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) === date;
+
+  if (kind === 'property') {
+    const coordinates = [value('latitud'), value('longitud')];
+    if (Boolean(coordinates[0]) !== Boolean(coordinates[1])) {
+      return invalid('Captura latitud y longitud juntas o deja ambas vacías.');
+    }
+  }
+  if (kind === 'property' || kind === 'property-edit') {
+    const file = form.querySelector('[name="imagen"]')?.files?.[0];
+    if (file && (file.size === 0 || file.size > 10 * 1024 * 1024)) {
+      return invalid('La imagen debe tener contenido y no superar 10 MB.');
+    }
+    if (file && !['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      return invalid('Selecciona una imagen JPEG, PNG o WebP.');
+    }
+  }
+  if (kind === 'lead') {
+    const min = value('precio_min');
+    const max = value('precio_max');
+    if (min && max && Number(min) > Number(max)) {
+      return invalid('El presupuesto mínimo no puede superar al máximo.');
+    }
+  }
+  if (kind === 'rental') {
+    const start = value('fecha_inicio');
+    const end = value('fecha_fin');
+    if (!validDate(start) || !validDate(end) || (start && end && end < start)) {
+      return invalid('Revisa el periodo: la fecha de término debe ser igual o posterior al inicio.');
+    }
+  }
+  if (kind === 'contract') {
+    const isRental = value('tipo_operacion') === 'RENTA';
+    const start = value('fecha_inicio');
+    const end = value('fecha_fin');
+    if (isRental && (!validDate(start) || !validDate(end) || (start && end && end < start))) {
+      return invalid('Revisa el periodo de renta: la fecha de término debe ser igual o posterior al inicio.');
+    }
+    if (!isRental && (Boolean(value('latitud')) !== Boolean(value('longitud')))) {
+      return invalid('Captura latitud y longitud juntas.');
+    }
+  }
+  if (kind === 'document') {
+    const file = form.querySelector('[name="archivo"]')?.files?.[0];
+    if (file && file.size > 10 * 1024 * 1024) return invalid('El archivo no puede superar 10 MB.');
+  }
+  return true;
 }
 
 // Oculta campos residenciales cuando se registra un lote baldio.
@@ -294,15 +600,41 @@ function configureMaintenanceForm(form) {
   const updateRentals = () => {
     const rentals = optionData.rentals.filter((rental) => String(rental.id_propiedad) === propertySelect.value);
     rentalSelect.innerHTML = `<option value="">Sin contrato asociado</option>${rentals.map((rental) => `<option value="${escapeHtml(rental.id)}">${escapeHtml(rental.nombre)}</option>`).join('')}`;
+    rentalSelect.dispatchEvent(new Event('change', { bubbles: true }));
   };
   propertySelect.addEventListener('change', updateRentals);
   updateRentals();
+}
+
+function configureCommissionForm(form) {
+  const propertySelect = form.querySelector('[name="id_propiedad"]');
+  const properties = optionData.properties.filter((item) => Number(item.precio) > 0);
+  propertySelect.innerHTML = `<option value="">Selecciona...</option>${properties.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.nombre)}</option>`).join('')}`;
+  const summary = document.createElement('p');
+  summary.className = 'workflow-field-hint commission-preview';
+  summary.setAttribute('role', 'status');
+  form.querySelector('.workflow-fields').append(summary);
+  const updatePreview = () => {
+    const property = properties.find((item) => String(item.id) === propertySelect.value);
+    if (!property) {
+      summary.textContent = 'Selecciona una propiedad para calcular el 5 % de su valor.';
+      return;
+    }
+    const cents = Math.round(Number(property.precio) * 100);
+    const commission = Math.floor((cents * 5 + 50) / 100) / 100;
+    summary.textContent = `Valor de la propiedad: ${formatCommissionMoney(property.precio)} · Comisión (5 %): ${formatCommissionMoney(commission)}. Se recalcula al guardar.`;
+  };
+  propertySelect.addEventListener('change', updatePreview);
+  updatePreview();
 }
 
 // Genera los controles disponibles para cada fila de las tablas.
 function actionButtons(resource, record) {
   const actions = tableConfig[resource]?.actions || [];
   return actions.map((action) => {
+    if (resource === 'reports' && action === 'report-pdf') {
+      return `<button type="button" class="text-button" data-download-report-id="${escapeHtml(record.id)}" data-report-operation="${escapeHtml(record.operacion)}" aria-label="Descargar reporte ${escapeHtml(record.operacion)} ${escapeHtml(record.id)} en PDF">Descargar PDF</button>`;
+    }
     if (resource === 'payments' && action === 'receipt') {
       return String(record.estado).toUpperCase() === 'PAGADO'
         ? `<button type="button" class="text-button" data-payment-receipt="${escapeHtml(record.id_pago)}">Recibo</button>`
@@ -311,8 +643,8 @@ function actionButtons(resource, record) {
     if (resource === 'clients' && action === 'history') {
       return `<button type="button" class="text-button" data-client-history="${escapeHtml(record.id_cliente)}">Historial</button>`;
     }
-    if (resource === 'clients' && action === 'portal-access' && isCurrentUserAdmin()) {
-      return `<button type="button" class="text-button" data-client-credentials="${escapeHtml(record.id_cliente)}">Acceso portal</button>`;
+    if (resource === 'clients' && action === 'portal-access') {
+      return isCurrentUserAdmin() ? `<button type="button" class="text-button" data-client-credentials="${escapeHtml(record.id_cliente)}">Acceso portal</button>` : '';
     }
     if (action === 'document') return `<button type="button" class="text-button" data-contract-document="${escapeHtml(record.id_contrato)}">Descargar contrato</button>`;
     if (action === 'map') {
@@ -330,7 +662,7 @@ function actionButtons(resource, record) {
     if (resource === 'users' && action === 'delete') {
       return `<button type="button" class="text-button danger-button" data-record-action="delete" data-resource="users" data-record-id="${escapeHtml(record.id_usuario)}">Eliminar</button>`;
     }
-    const idKey = { properties: 'id_propiedad', clients: 'id_cliente', leads: 'id_lead', visits: 'id_cita', offers: 'id_oferta', rentals: 'id_renta', payments: 'id_pago', commissions: 'id_comision', sellers: 'id_usuario', users: 'id_usuario' }[resource];
+    const idKey = { properties: 'id_propiedad', clients: 'id_cliente', leads: 'id_lead', visits: 'id_cita', offers: 'id_oferta', rentals: 'id_renta', payments: 'id_pago', maintenance: 'id_solicitud', commissions: 'id_comision', sellers: 'id_usuario', users: 'id_usuario' }[resource];
     const actionName = action === 'archive' ? 'Archivar' : action === 'edit' ? 'Editar' : 'Cambiar estado';
     return `<button type="button" class="text-button" data-record-action="${action}" data-resource="${resource}" data-record-id="${escapeHtml(record[idKey])}">${actionName}</button>`;
   }).join(' ');
@@ -365,22 +697,43 @@ function bindUserRecordActions(panel, resource) {
 
 // Convierte valores de la base de datos a texto seguro y legible para las tablas.
 function formatCell(resource, key, value, record) {
+  if (resource === 'clients' && key === 'nombre') return escapeHtml([value, record.apellido_paterno, record.apellido_materno].filter(Boolean).join(' ') || '—');
+  if (resource === 'commissions' && key === 'es_demo') return value ? 'Demo' : 'Normal';
+  if (resource === 'commissions' && ['monto_operacion', 'monto_total'].includes(key)) return value === null || value === undefined ? '—' : escapeHtml(formatCommissionMoney(value));
   if (key === 'precio' || key === 'precio_total' || key === 'monto' || key === 'monto_total' || key === 'monto_operacion' || key === 'precio_venta' || key === 'renta_mensual' || key === 'cobros' || key === 'comision_mes' || key === 'costo_estimado' || key === 'costo_final') return value === null || value === undefined ? '—' : escapeHtml(formatMoney(value));
   if (key === 'tamano_bytes') return `${(Number(value || 0) / 1024).toFixed(1)} KB`;
   if (key === 'puntuacion') return `${escapeHtml(value)}%`;
-  if (key === 'fecha_cita' || key === 'fecha_venta' || key === 'fecha_contrato' || key === 'creado_en' || key === 'pagado_en' || key === 'fecha_inicio' || key === 'fecha_fin' || key === 'fecha_limite' || key === 'periodo' || key === 'fecha') {
+  if (key === 'fecha_cita' || key === 'fecha_venta' || key === 'fecha_contrato' || key === 'fecha_registro' || key === 'creado_en' || key === 'pagado_en' || key === 'fecha_inicio' || key === 'fecha_fin' || key === 'fecha_limite' || key === 'periodo' || key === 'fecha') {
     if (!value) return '—';
-    const dateOnly = ['fecha_venta', 'fecha_contrato', 'fecha_inicio', 'fecha_fin', 'fecha_limite', 'periodo'].includes(key)
+    const dateOnly = ['fecha_venta', 'fecha_contrato', 'fecha_registro', 'fecha_inicio', 'fecha_fin', 'fecha_limite', 'periodo'].includes(key)
       && /^\d{4}-\d{2}-\d{2}$/.test(String(value));
     const date = new Date(dateOnly ? `${value}T12:00:00` : value);
     return Number.isNaN(date.getTime()) ? escapeHtml(value)
       : escapeHtml(dateOnly ? date.toLocaleDateString('es-MX') : date.toLocaleString('es-MX'));
+  }
+  if (resource === 'maintenance' && key === 'prioridad') {
+    return `${escapeHtml(value || '—')} <small>(${record.prioridad_automatica ? 'automática' : 'manual'})</small>`;
   }
   if (key === 'tipo_operacion') return value === 'VENTA' ? 'Venta' : value === 'RENTA' ? 'Renta' : escapeHtml(value || '—');
   if (key === 'rol') return value === 'administrador' || value === 'admin' ? 'Administrador' : value === 'vendedor' || value === 'agente' ? 'Vendedor' : escapeHtml(value || '—');
   if (key === 'activo') return value === true || value === 'true' ? 'Activo' : 'Inactivo';
   if (resource === 'properties' && key === 'titulo') return `<strong>${escapeHtml(value)}</strong><small class="record-subtitle">${escapeHtml(record.direccion)}</small>`;
   return escapeHtml(value || '—');
+}
+
+function syncClientTabs() {
+  const view = document.getElementById('clients-view');
+  if (!view) return;
+  view.querySelectorAll('[data-client-tab]').forEach((tab) => {
+    const selected = tab.dataset.clientTab === clientTableTab;
+    tab.setAttribute('aria-selected', String(selected));
+    tab.tabIndex = selected ? 0 : -1;
+  });
+  view.querySelectorAll('[data-record-panel="clients"], [data-record-panel="leads"]').forEach((panel) => {
+    const selected = panel.dataset.recordPanel === (clientTableTab === 'potenciales' ? 'leads' : 'clients');
+    panel.hidden = !selected;
+    if (selected) panel.setAttribute('aria-labelledby', `client-tab-${clientTableTab}`);
+  });
 }
 
 // Renderiza tablas, filtros, acciones y contenido adicional de cada modulo.
@@ -395,8 +748,14 @@ function renderRecords(resource, viewId, data = []) {
     panel = document.createElement('section');
     panel.className = 'panel persisted-panel';
     panel.dataset.recordPanel = resource;
-    view.append(panel);
+    if (resource === 'clients' || resource === 'leads') {
+      panel.tabIndex = -1;
+      panel.id = `client-panel-${resource}`;
+      panel.setAttribute('role', 'tabpanel');
+      (view.querySelector('[data-clients-tables]') || view).append(panel);
+    } else view.append(panel);
   }
+  const isClientTable = resource === 'clients' || resource === 'leads';
   const filterOptions = {
     visits: ['Todas', 'Pendiente', 'Confirmada', 'Completada', 'Cancelada'],
     rentals: ['Todas', 'Activa', 'Finalizada', 'Cancelada'],
@@ -430,11 +789,30 @@ function renderRecords(resource, viewId, data = []) {
   const filter = filterOptions ? `<label class="record-filter"><span>Filtrar</span><select data-record-filter="${resource}">${filterOptions.map((option) => `<option value="${escapeHtml(option)}">${escapeHtml(option)}</option>`).join('')}</select></label>` : '';
   const propertyResultCount = resource === 'properties' ? ' data-property-result-count' : '';
   const resultLabel = resource === 'properties' ? 'propiedades' : 'registros';
-  panel.innerHTML = `<div class="panel-heading"><div><h2>${config.title}</h2><p${propertyResultCount}>${visibleData.length} ${resultLabel}${resource === 'reports' && visibleData.length !== data.length ? ` de ${data.length}` : ''}</p></div><div class="panel-heading-actions">${recordSearch}${propertySearch}${propertyCategory}${dateFilter}${reportFilter}${filter}</div></div><div class="property-table-wrap"><table class="data-table"><thead><tr>${config.columns.map(([, label]) => `<th>${label}</th>`).join('')}<th>Acciones</th></tr></thead><tbody>${visibleData.length ? visibleData.map((record) => `<tr data-record-text="${escapeHtml(getRecordSearchText(record))}" data-record-date="${escapeHtml(dateField ? record[dateField] : '')}"${resource === 'properties'   ? ` data-property-title="${escapeHtml(record.titulo)}" data-property-id="${escapeHtml(record.id_propiedad)}" data-property-category="${escapeHtml(record.categoria)}"` : ''}>${config.columns.map(([key]) => `<td>${formatCell(resource, key, record[key], record)}</td>`).join('')}<td>${actionButtons(resource, record)}</td></tr>`).join('') : `<tr><td colspan="${config.columns.length + 1}" class="empty-records">No hay registros para mostrar.</td></tr>`}</tbody></table></div>`;
+  const reportExportPdf = resource === 'reports'
+    ? `<button type="button" class="primary-button small-button" data-download-report-pdf title="Descargar reporte en PDF con diseño profesional y marca de agua">📄 Descargar PDF</button>`
+    : '';
+  const columnControl = isClientTable ? `<details class="client-column-control"><summary>Columnas</summary><div>${config.columns.map(([key, label]) => `<label><input type="checkbox" data-client-column="${escapeHtml(key)}"${clientColumns[resource].has(key) ? ' checked' : ''}> ${escapeHtml(label)}</label>`).join('')}</div></details>` : '';
+  const columnAttributes = (key) => isClientTable ? ` data-column-key="${escapeHtml(key)}"${clientColumns[resource].has(key) ? '' : ' hidden'}` : '';
+  const renderRow = (record) => {
+    const actions = actionButtons(resource, record);
+    const actionCell = isClientTable ? `<details class="client-row-actions"><summary aria-label="Acciones del registro ${escapeHtml(record[resource === 'clients' ? 'id_cliente' : 'id_lead'])}">⋮</summary><div class="client-row-menu">${actions}</div></details>` : actions;
+    return `<tr data-record-text="${escapeHtml(getRecordSearchText(record))}" data-record-date="${escapeHtml(dateField ? record[dateField] : '')}"${resource === 'clients' ? ` data-record-active="${record.activo === true || record.activo === 'true'}"` : ''}${resource === 'reports' ? ` data-record-activity="${escapeHtml(record.actividad)}"` : ''}${resource === 'maintenance' ? ` data-priority="${escapeHtml(record.prioridad || 'normal')}" data-record-status="${escapeHtml(record.estado)}"` : ''}${resource === 'properties' ? ` data-property-title="${escapeHtml(record.titulo)}" data-property-id="${escapeHtml(record.id_propiedad)}" data-property-category="${escapeHtml(record.categoria)}"` : ''}>${config.columns.map(([key]) => `<td${columnAttributes(key)}>${formatCell(resource, key, record[key], record)}</td>`).join('')}<td>${actionCell}</td></tr>`;
+  };
+  const rows = resource === 'maintenance' && visibleData.length
+    ? ['urgente', 'alta', 'normal', 'baja'].map((priority) => {
+      const group = visibleData.filter((record) => (record.prioridad || 'normal') === priority);
+      return group.length ? `<tr class="maintenance-priority-heading" data-priority-heading="${priority}"><th colspan="${config.columns.length + 1}" scope="rowgroup">Prioridad ${priority}</th></tr>${group.map(renderRow).join('')}` : '';
+    }).join('')
+    : visibleData.map(renderRow).join('');
+  panel.innerHTML = `<div class="panel-heading"><div><h2>${config.title}</h2><p${propertyResultCount}>${visibleData.length} ${resultLabel}${resource === 'reports' && visibleData.length !== data.length ? ` de ${data.length}` : ''}</p></div><div class="panel-heading-actions">${recordSearch}${propertySearch}${propertyCategory}${dateFilter}${reportFilter}${filter}${columnControl}${reportExportPdf}</div></div><div class="property-table-wrap"><table class="data-table"><thead><tr>${config.columns.map(([key, label]) => `<th${columnAttributes(key)}>${label}</th>`).join('')}<th>Acciones</th></tr></thead><tbody>${visibleData.length ? rows : `<tr><td colspan="${config.columns.length + 1}" class="empty-records">No hay registros para mostrar.</td></tr>`}${isClientTable && visibleData.length ? `<tr data-client-empty hidden><td colspan="${config.columns.length + 1}" class="empty-records">No hay registros que coincidan con los filtros.</td></tr>` : ''}</tbody></table></div>`;
+  panel.querySelectorAll('select').forEach((select) => enableSelectSearch(select, select.closest('label').querySelector('span').textContent));
   bindUserRecordActions(panel, resource);
   if (resource === 'properties') applyPropertyFilters(panel);
   if (resource !== 'properties') applyRecordFilters(panel, resource);
+  if (isClientTable) syncClientTabs();
   if (resource === 'visits') renderVisitCalendar(panel, data);
+  updateMetrics();
 }
 
 // Normaliza campos de un registro para la busqueda dentro de una tabla.
@@ -457,6 +835,9 @@ function paginatePanel(panel, resource, resetPage = false) {
   const start = (page - 1) * PAGE_SIZE;
   panel.querySelectorAll('tbody tr[data-record-text]').forEach((row) => { row.dataset.pageHidden = 'true'; });
   rows.slice(start, start + PAGE_SIZE).forEach((row) => { delete row.dataset.pageHidden; });
+  panel.querySelectorAll('[data-priority-heading]').forEach((heading) => {
+    heading.hidden = !rows.slice(start, start + PAGE_SIZE).some((row) => row.dataset.priority === heading.dataset.priorityHeading);
+  });
   let nav = panel.querySelector('[data-pagination]');
   if (!nav) {
     nav = document.createElement('nav');
@@ -475,16 +856,27 @@ function applyRecordFilters(panel, resource) {
   const state = recordFilters[resource] || (recordFilters[resource] = { search: '', from: '', to: '' });
   const rows = [...panel.querySelectorAll('tbody tr[data-record-text]')];
   const query = state.search.trim().toLocaleLowerCase();
+  const globalQuery = ['clients', 'leads'].includes(resource)
+    ? (document.getElementById('global-search')?.value || '').trim().toLocaleLowerCase() : '';
+  const status = resource === 'maintenance' ? panel.querySelector('[data-record-filter="maintenance"]')?.value : '';
+  const activity = resource === 'reports' ? panel.querySelector('[data-record-filter="reports"]')?.value : '';
   const matches = rows.filter((row) => {
     const date = String(row.dataset.recordDate || '').slice(0, 10);
     const match = (!query || row.dataset.recordText.includes(query))
+      && (!globalQuery || row.dataset.recordText.includes(globalQuery))
       && (!state.from || date >= state.from)
-      && (!state.to || date <= state.to);
-    row.hidden = !match;
-    return match;
+      && (!state.to || date <= state.to)
+      && (resource !== 'clients' || clientTableTab !== 'activos' || row.dataset.recordActive === 'true')
+      && (resource !== 'clients' || clientTableTab !== 'inactivos' || row.dataset.recordActive === 'false')
+      && (!status || status === 'Todas' || row.dataset.recordStatus === status);
+    const matchesActivity = !activity || activity === 'Todas' || row.dataset.recordActivity === activity;
+    row.hidden = !(match && matchesActivity);
+    return match && matchesActivity;
   }).length;
   const count = panel.querySelector('[data-property-result-count]') || panel.querySelector('.panel-heading p');
   if (count) count.textContent = `${matches} registros${matches !== rows.length ? ` de ${rows.length}` : ''}`;
+  const empty = panel.querySelector('[data-client-empty]');
+  if (empty) empty.hidden = matches !== 0;
   paginatePanel(panel, resource, true);
 }
 
@@ -562,6 +954,10 @@ function renderVisitCalendar(panel, visits) {
 function applyRecordFilter(select) {
   const value = select.value.toLocaleLowerCase();
   const panel = select.closest('.persisted-panel');
+  if (panel && ['maintenance', 'reports'].includes(panel.dataset.recordPanel)) {
+    applyRecordFilters(panel, panel.dataset.recordPanel);
+    return;
+  }
   panel?.querySelectorAll('tbody tr').forEach((row) => {
     row.hidden = value !== 'todas' && !row.textContent.toLocaleLowerCase().includes(value);
   });
@@ -627,7 +1023,7 @@ function configureContractForm(form) {
   operationSelect.addEventListener('change', () => {
     const available = optionData.properties.filter((item) => String(item.tipo_operacion).toUpperCase() === operationSelect.value);
     propertySelect.innerHTML = `<option value="">Selecciona...</option>${available.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.nombre)}</option>`).join('')}`;
-    toggleFields();
+    propertySelect.dispatchEvent(new Event('change', { bubbles: true }));
   });
   clientSelect.addEventListener('change', toggleFields);
   propertySelect.addEventListener('change', toggleFields);
@@ -639,37 +1035,132 @@ function renderDashboardProperties(properties) {
   const body = document.querySelector('#property-table tbody');
   if (!body) return;
   body.innerHTML = properties.slice(0, 5).map((property) => `
-    <tr><td><div class="property-name"><div class="property-photo photo-one"></div><span><strong>${escapeHtml(property.titulo)}</strong><small>${escapeHtml(property.direccion)}</small></span></div></td>
+    <tr><td>${escapeHtml(property.id_propiedad)}</td><td><div class="property-name"><div class="property-photo photo-one"></div><span><strong>${escapeHtml(property.titulo)}</strong><small>${escapeHtml(property.direccion)}</small></span></div></td>
       <td>${escapeHtml(property.categoria)}</td><td><span class="status status-green">${escapeHtml(property.estado_propiedad)}</span></td>
       <td><strong>${escapeHtml(formatMoney(property.precio))}</strong></td><td>${escapeHtml(property.agente || 'Sin asignar')}</td>
       <td><button class="row-menu" type="button" aria-label="Acciones de propiedad" data-record-action="edit" data-resource="properties" data-record-id="${property.id_propiedad}">•••</button></td></tr>
-  `).join('') || '<tr><td colspan="6" class="empty-records">Todavía no hay propiedades registradas.</td></tr>';
+  `).join('') || '<tr><td colspan="7" class="empty-records">Todavía no hay propiedades registradas.</td></tr>';
 }
 
+let lastSummaryData = null;
+
 // Actualiza indicadores generales y cifras resumidas de cada modulo.
-function updateMetrics(summary) {
-  const values = [summary.propiedades, summary.clientes, summary.visitas, formatMoney(summary.ingresos)];
+function updateMetrics(summary = lastSummaryData) {
+  if (summary) lastSummaryData = summary;
+  const currentSummary = summary || lastSummaryData || {};
+  const values = [currentSummary.propiedades, currentSummary.clientes, currentSummary.visitas, formatMoney(currentSummary.ingresos)];
   document.querySelectorAll('.metric-grid article > strong').forEach((element, index) => {
-    if (values[index] !== undefined) element.textContent = values[index];
+    if (values[index] !== undefined) {
+      if (element.textContent !== String(values[index])) {
+        element.textContent = values[index];
+        element.classList.remove('data-updated');
+        void element.offsetWidth;
+        element.classList.add('data-updated');
+      }
+    }
   });
   document.querySelectorAll('.metric-foot').forEach((element) => {
     element.textContent = 'Datos actuales desde PostgreSQL';
   });
   const countStatus = (items, key, valuesToCount) => items.filter((item) => valuesToCount.includes(String(item[key] || '').toLocaleLowerCase())).length;
+  const now = new Date();
+  const leadsConvertidos = countStatus(records.leads, 'estado', ['convertido']);
+  const conversionRate = records.leads.length ? `${Math.round((leadsConvertidos / records.leads.length) * 100)}%` : '0%';
+  const comisionesMes = records.commissions.filter((item) => {
+    const d = new Date(item.creado_en);
+    return !isNaN(d) && d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+  });
+  const totalComisionesMes = comisionesMes.reduce((sum, item) => sum + Number(item.monto_total || 0), 0);
+  const totalPorLiquidar = records.commissions
+    .filter((item) => String(item.estado).toUpperCase() === 'PENDIENTE')
+    .reduce((sum, item) => sum + Number(item.monto_total || 0), 0);
+  const cierresMes = records.sales.filter((item) => {
+    const d = new Date(item.fecha_venta);
+    return !isNaN(d) && d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+  }).length;
+
   const metrics = {
-    'properties-view': [['En inventario', records.properties.length], ['Disponibles', countStatus(records.properties, 'estado_propiedad', ['disponible'])], ['En proceso', countStatus(records.properties, 'estado_propiedad', ['reservada'])], ['Vendidas / rentadas', countStatus(records.properties, 'estado_propiedad', ['vendida', 'rentada'])]],
-    'clients-view': [['Clientes', records.clients.length], ['Nuevos clientes potenciales', countStatus(records.leads, 'estado', ['nuevo'])], ['Clientes potenciales activos', records.leads.filter((lead) => !['convertido', 'descartado', 'cerrado', 'perdido'].includes(String(lead.estado).toLowerCase())).length], ['Con preferencias', new Set(records.matches.map((item) => String(item.id_lead))).size]],
-    'matching-view': [['Coincidencias guardadas', records.matches.length], ['Clientes potenciales evaluados', new Set(records.matches.map((item) => String(item.id_lead))).size], ['Puntuación promedio', `${records.matches.length ? Math.round(records.matches.reduce((sum, item) => sum + Number(item.puntuacion), 0) / records.matches.length) : 0}%`], ['Clientes potenciales', records.leads.length]],
-    'visits-view': [['Visitas registradas', records.visits.length], ['Hoy', records.visits.filter((item) => new Date(item.fecha_cita).toDateString() === new Date().toDateString()).length], ['Confirmadas', countStatus(records.visits, 'estado', ['confirmada'])], ['Completadas', countStatus(records.visits, 'estado', ['completada'])]],
-    'portal-view': [['Propiedades publicables', records.properties.filter((item) => String(item.estado_propiedad).toLowerCase() === 'disponible').length], ['Solicitudes recibidas', records.leads.filter((item) => item.origen === 'portal').length], ['Clientes potenciales con consentimiento', records.leads.filter((item) => item.consentimiento_datos).length], ['Favoritos', records.favorites?.length || 0]],
-    'legal-view': [['Documentos guardados', records.documents.length], ['Por validar', countStatus(records.documents, 'estado', ['pendiente'])], ['Validados', countStatus(records.documents, 'estado', ['validado', 'aprobado'])], ['Propiedades documentadas', new Set(records.documents.map((item) => String(item.id_propiedad))).size]],
-    'contracts-view': [['Contratos registrados', records.contracts.length], ['Ventas', records.contracts.filter((item) => item.tipo_operacion === 'VENTA').length], ['Rentas', records.contracts.filter((item) => item.tipo_operacion === 'RENTA').length], ['Operaciones del mes', records.contracts.filter((item) => new Date(item.fecha_contrato).getMonth() === new Date().getMonth()).length]],
-    'finance-view': [['Comisiones registradas', records.commissions.length], ['Total comisión', formatMoney(records.commissions.reduce((sum, item) => sum + Number(item.monto_total || 0), 0))], ['Operaciones comisionadas', new Set(records.commissions.map((item) => String(item.id_propiedad))).size], ['Ventas registradas', records.sales.length]],
-    'rents-view': [['Contratos activos', countStatus(records.rentals, 'estado', ['activa'])], ['Cobros recibidos', countStatus(records.payments, 'estado', ['pagado'])], ['Adeudos vencidos', records.payments.filter((item) => String(item.estado).toUpperCase() === 'VENCIDO' || (String(item.estado).toUpperCase() === 'PENDIENTE' && String(item.periodo).slice(0, 10) <= localDateKey())).length], ['Saldo pendiente', formatMoney(records.payments.filter((item) => ['pendiente', 'vencido'].includes(String(item.estado).toLowerCase())).reduce((sum, item) => sum + Number(item.monto || 0), 0))]],
-    'maintenance-view': [['Solicitudes abiertas', records.maintenance.filter((item) => ['pendiente', 'en_proceso'].includes(item.estado)).length], ['Urgentes', records.maintenance.filter((item) => item.prioridad === 'urgente' && ['pendiente', 'en_proceso'].includes(item.estado)).length], ['En proceso', countStatus(records.maintenance, 'estado', ['en_proceso'])], ['Costo final registrado', formatMoney(records.maintenance.reduce((sum, item) => sum + Number(item.costo_final || 0), 0))]],
-    'sellers-view': [['Vendedores registrados', records.sellers.length], ['Vendedores activos', countStatus(records.sellers, 'activo', [true, 'true'])], ['Comisiones del mes', formatMoney(records.sellers.reduce((sum, item) => sum + Number(item.comision_mes || 0), 0))], ['Rol requerido', 'Administrador']],
-    'users-view': [['Usuarios registrados', records.users.filter((item) => item.rol === 'usuario').length], ['Administradores', countStatus(records.users, 'rol', ['admin', 'administrador'])], ['Usuarios activos', countStatus(records.users, 'activo', [true, 'true'])], ['Rol requerido', 'Administrador']],
-    'reports-view': [['Propiedades', records.properties.length], ['Clientes', records.clients.length], ['Operaciones cerradas', records.sales.length], ['Documentos', records.documents.length]],
+    'properties-view': [
+      ['Total en inventario', records.properties.length],
+      ['Disponibles', countStatus(records.properties, 'estado_propiedad', ['disponible'])],
+      ['En proceso', countStatus(records.properties, 'estado_propiedad', ['reservada'])],
+      ['Vendidas / rentadas', countStatus(records.properties, 'estado_propiedad', ['vendida', 'rentada'])],
+    ],
+    'clients-view': [
+      ['Clientes registrados', records.clients.length],
+      ['Nuevos clientes potenciales', countStatus(records.leads, 'estado', ['nuevo'])],
+      ['Clientes potenciales activos', records.leads.filter((lead) => !['convertido', 'descartado', 'cerrado', 'perdido'].includes(String(lead.estado).toLowerCase())).length],
+      ['Conversión', conversionRate],
+    ],
+    'matching-view': [
+      ['Coincidencias guardadas', records.matches.length],
+      ['Clientes potenciales evaluados', new Set(records.matches.map((item) => String(item.id_lead))).size],
+      ['Puntuación promedio', `${records.matches.length ? Math.round(records.matches.reduce((sum, item) => sum + Number(item.puntuacion), 0) / records.matches.length) : 0}%`],
+      ['Clientes potenciales', records.leads.length],
+    ],
+    'visits-view': [
+      ['Visitas registradas', records.visits.length],
+      ['Hoy', records.visits.filter((item) => new Date(item.fecha_cita).toDateString() === now.toDateString()).length],
+      ['Confirmadas', countStatus(records.visits, 'estado', ['confirmada'])],
+      ['Completadas', countStatus(records.visits, 'estado', ['completada'])],
+    ],
+    'portal-view': [
+      ['Propiedades publicables', records.properties.filter((item) => String(item.estado_propiedad).toLowerCase() === 'disponible').length],
+      ['Solicitudes recibidas', records.leads.filter((item) => item.origen === 'portal').length],
+      ['Clientes potenciales con consentimiento', records.leads.filter((item) => item.consentimiento_datos).length],
+      ['Favoritos', records.favorites?.length || 0],
+    ],
+    'legal-view': [
+      ['Documentos guardados', records.documents.length],
+      ['Por validar', countStatus(records.documents, 'estado', ['pendiente'])],
+      ['Validados', countStatus(records.documents, 'estado', ['validado', 'aprobado'])],
+      ['Propiedades documentadas', new Set(records.documents.map((item) => String(item.id_propiedad))).size],
+    ],
+    'contracts-view': [
+      ['Contratos registrados', records.contracts.length],
+      ['Ventas', records.contracts.filter((item) => String(item.tipo_operacion).toUpperCase() === 'VENTA').length],
+      ['Rentas', records.contracts.filter((item) => String(item.tipo_operacion).toUpperCase() === 'RENTA').length],
+      ['Contratos de este mes', records.contracts.filter((item) => {
+        const d = new Date(item.fecha_contrato);
+        return !isNaN(d) && d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+      }).length],
+    ],
+    'finance-view': [
+      ['Comisiones del mes', formatCommissionMoney(totalComisionesMes || records.commissions.reduce((sum, item) => sum + Number(item.monto_total || 0), 0))],
+      ['Por liquidar', formatCommissionMoney(totalPorLiquidar)],
+      ['Cierres del mes', cierresMes || records.sales.length],
+      ['Operaciones comisionadas', new Set(records.commissions.map((item) => String(item.id_propiedad))).size],
+    ],
+    'rents-view': [
+      ['Contratos activos', countStatus(records.rentals, 'estado', ['activa'])],
+      ['Cobros recibidos', countStatus(records.payments, 'estado', ['pagado'])],
+      ['Adeudos vencidos', records.payments.filter((item) => String(item.estado).toUpperCase() === 'VENCIDO' || (String(item.estado).toUpperCase() === 'PENDIENTE' && String(item.periodo).slice(0, 10) <= localDateKey())).length],
+      ['Saldo pendiente', formatMoney(records.payments.filter((item) => ['pendiente', 'vencido'].includes(String(item.estado).toLowerCase())).reduce((sum, item) => sum + Number(item.monto || 0), 0))],
+    ],
+    'maintenance-view': [
+      ['Solicitudes abiertas', records.maintenance.filter((item) => ['pendiente', 'en_proceso'].includes(item.estado)).length],
+      ['Urgentes', records.maintenance.filter((item) => item.prioridad === 'urgente' && ['pendiente', 'en_proceso'].includes(item.estado)).length],
+      ['En proceso', countStatus(records.maintenance, 'estado', ['en_proceso'])],
+      ['Costo final registrado', formatMoney(records.maintenance.reduce((sum, item) => sum + Number(item.costo_final || 0), 0))],
+    ],
+    'sellers-view': [
+      ['Vendedores registrados', records.sellers.length],
+      ['Vendedores activos', countStatus(records.sellers, 'activo', [true, 'true'])],
+      ['Comisiones del mes', formatCommissionMoney(records.sellers.reduce((sum, item) => sum + Number(item.comision_mes || 0), 0))],
+      ['Rol requerido', 'Administrador'],
+    ],
+    'users-view': [
+      ['Usuarios registrados', records.users.filter((item) => item.rol === 'usuario').length],
+      ['Administradores', countStatus(records.users, 'rol', ['admin', 'administrador'])],
+      ['Usuarios activos', countStatus(records.users, 'activo', [true, 'true'])],
+      ['Rol requerido', 'Administrador'],
+    ],
+    'reports-view': [
+      ['Propiedades', records.properties.length],
+      ['Clientes', records.clients.length],
+      ['Operaciones cerradas', records.sales.length],
+      ['Documentos', records.documents.length],
+    ],
   };
   Object.entries(metrics).forEach(([viewId, items]) => {
     const cells = document.querySelectorAll(`#${viewId} .mini-stat-grid > div`);
@@ -774,21 +1265,85 @@ async function submitClientActivity(form) {
 function renderActivity(activity) {
   const list = document.querySelector('#dashboard-view .activity-list');
   if (!list) return;
-  const actionLabels = { crear: 'registró', actualizar: 'actualizó', eliminar: 'eliminó', archivar: 'archivó', ejecutar: 'ejecutó' };
+  const actionTypes = {
+    crear: { abbreviation: 'C', label: 'registró', className: 'create' },
+    insert: { abbreviation: 'C', label: 'registró', className: 'create' },
+    actualizar: { abbreviation: 'A', label: 'actualizó', className: 'update' },
+    update: { abbreviation: 'A', label: 'actualizó', className: 'update' },
+    eliminar: { abbreviation: 'E', label: 'eliminó', className: 'delete' },
+    delete: { abbreviation: 'E', label: 'eliminó', className: 'delete' },
+    archivar: { abbreviation: 'Ar', label: 'archivó', className: 'archive' },
+    ejecutar: { abbreviation: 'Ej', label: 'ejecutó', className: 'execute' },
+    cargar: { abbreviation: 'Ca', label: 'cargó', className: 'upload' },
+  };
   const entityLabels = { usuarios: 'un usuario', clientes: 'un cliente', contratos: 'un contrato', propiedades: 'una propiedad', leads: 'un cliente potencial', citas: 'una cita', ventas: 'una venta', rentas: 'una renta', pagos_renta: 'un pago', comisiones: 'una comisión', coincidencias: 'coincidencias' };
-  list.innerHTML = activity.length ? activity.map((item) => `
-    <div class="activity-item"><span class="activity-icon">${escapeHtml(item.accion.slice(0, 1).toLocaleUpperCase())}</span>
-      <div><p><strong>${escapeHtml(item.usuario)}</strong> ${escapeHtml(actionLabels[item.accion] || 'realizó una acción en')} ${escapeHtml(entityLabels[item.entidad] || 'el sistema')}</p>
+  list.innerHTML = activity.length ? activity.map((item) => {
+    const action = actionTypes[String(item.accion || '').toLocaleLowerCase()] || {
+      abbreviation: '?', label: 'realizó una acción en', className: 'other',
+    };
+    return `
+    <div class="activity-item"><span class="activity-icon activity-icon-${action.className}" aria-label="${escapeHtml(action.label)}">${action.abbreviation}</span>
+      <div><p><strong>${escapeHtml(item.usuario)}</strong> ${escapeHtml(action.label)} ${escapeHtml(entityLabels[item.entidad] || 'el sistema')}</p>
         <p>${escapeHtml(item.detalle?.titulo || item.detalle?.nombre || item.detalle?.correo || '')}</p>
         <small>${escapeHtml(new Date(item.creado_en).toLocaleString('es-MX'))}</small></div></div>
-  `).join('') : '<p class="empty-records">Todavía no hay actividad registrada.</p>';
+  `;
+  }).join('') : '<p class="empty-records">Todavía no hay actividad registrada.</p>';
+}
+
+// Controla los indicadores y barras animadas de carga de datos en la interfaz.
+function setWorkspaceLoading(isLoading, message = 'Sincronizando datos...') {
+  const loader = document.getElementById('view-loading');
+  const loadingText = document.getElementById('loading-text') || loader?.querySelector('span:not(.loading-spinner)');
+  const topBar = document.getElementById('top-loading-bar');
+  const metricGrid = document.querySelector('.metric-grid');
+
+  if (isLoading) {
+    if (loadingText) loadingText.textContent = message;
+    if (loader) loader.classList.add('visible');
+    if (topBar) {
+      topBar.classList.remove('complete');
+      topBar.classList.add('loading');
+    }
+    if (metricGrid) metricGrid.classList.add('is-loading-data');
+  } else {
+    if (metricGrid) metricGrid.classList.remove('is-loading-data');
+    if (topBar) {
+      topBar.classList.remove('loading');
+      topBar.classList.add('complete');
+      setTimeout(() => topBar.classList.remove('complete'), 450);
+    }
+    if (loader) {
+      setTimeout(() => {
+        loader.classList.remove('visible');
+        if (loadingText) loadingText.textContent = 'Cargando vista';
+      }, 200);
+    }
+  }
 }
 
 // Carga los datos, aplica permisos por rol y actualiza cada vista del espacio.
 async function loadWorkspace() {
+  setWorkspaceLoading(true, 'Cargando datos del sistema...');
   try {
+    const currentUserForLoad = JSON.parse(localStorage.getItem('habita_user') || '{}');
+    const roleForLoad = String(currentUserForLoad.rol || currentUserForLoad.role || '').toLowerCase();
+    const adminForLoad = ['administrador', 'admin'].includes(roleForLoad);
+    const resourcesToLoad = Object.keys(tableConfig).filter((resource) => resource !== 'properties'
+      && (resource !== 'users' || adminForLoad)
+      && (resource !== 'sellers' || adminForLoad)
+      && (resource !== 'commissions' || adminForLoad));
+    // Todas las peticiones salen a la vez; solo se espera lo critico para el primer pintado.
+    const propertiesRequest = api.getAllPages('/api/properties');
+    const summaryRequest = api.get('summary');
+    const optionsRequest = api.get('options');
+    const activityRequest = api.get('activity');
+    const resourceRequests = resourcesToLoad.map((resource) => api.get(resource));
+    [propertiesRequest, summaryRequest, optionsRequest, activityRequest, ...resourceRequests]
+      .forEach((request) => request.catch(() => {}));
+    preloadLogo().catch(() => {});
+    loadNotifications().catch((error) => console.error('No se pudieron cargar las notificaciones:', error));
     const [propertiesResult, summaryResult, optionsResult] = await Promise.allSettled([
-      api.getAllPages('/api/properties'), api.get('summary'), api.get('options'),
+      propertiesRequest, summaryRequest, optionsRequest,
     ]);
     if (propertiesResult.status === 'rejected') throw propertiesResult.reason;
     if (summaryResult.status === 'rejected') throw summaryResult.reason;
@@ -810,61 +1365,59 @@ async function loadWorkspace() {
     const sellersView = document.getElementById('sellers-view');
     if (usersView) usersView.hidden = !isAdmin;
     if (sellersView) sellersView.hidden = !isAdmin;
-    const resources = Object.keys(tableConfig).filter((resource) => resource !== 'properties'
-      && (resource !== 'users' || isAdmin)
-      && (resource !== 'sellers' || isAdmin)
-      && (resource !== 'commissions' || isAdmin));
-    const responses = await Promise.allSettled(resources.map((resource) => api.get(resource)));
-    resources.forEach((resource, index) => {
-      const result = responses[index];
-      if (result.status === 'fulfilled') {
-        records[resource] = Array.isArray(result.value.data) ? result.value.data : [];
-      } else {
-        records[resource] = [];
-        console.error(`No se pudo cargar la tabla ${resource}:`, result.reason);
-      }
-    });
     if (!isAdmin) records.users = [];
     if (!isAdmin) records.sellers = [];
     if (!isAdmin) records.commissions = [];
-    const activityResult = await api.get('activity').catch((error) => {
-      console.error('No se pudo cargar la actividad:', error);
-      return { data: [] };
-    });
-    records.activity = activityResult.data;
-    await loadNotifications().catch((error) => console.error('No se pudieron cargar las notificaciones:', error));
+    const resourceViews = {
+      clients: 'clients-view', leads: 'clients-view', visits: 'visits-view', matches: 'matching-view',
+      documents: 'legal-view', offers: 'contracts-view', sales: 'contracts-view',
+      commissions: 'finance-view', rentals: 'rents-view', payments: 'rents-view',
+      maintenance: 'maintenance-view', contracts: 'contracts-view', reports: 'reports-view',
+      users: 'users-view', sellers: 'sellers-view',
+    };
+    const renderResource = (resource) => {
+      if (resourceViews[resource] && (isAdmin || !['users', 'sellers', 'commissions'].includes(resource))) {
+        renderRecords(resource, resourceViews[resource], records[resource]);
+      }
+    };
+    const summaryData = summaryResult.value.data;
     renderDashboardProperties(records.properties);
     renderRecords('properties', 'properties-view', records.properties);
-    renderRecords('clients', 'clients-view', records.clients);
-    renderRecords('leads', 'clients-view', records.leads);
-    renderRecords('visits', 'visits-view', records.visits);
-    renderRecords('matches', 'matching-view', records.matches);
-    renderRecords('documents', 'legal-view', records.documents);
-    renderRecords('offers', 'contracts-view', records.offers);
-    renderRecords('sales', 'contracts-view', records.sales);
-    renderRecords('commissions', 'finance-view', records.commissions);
-    renderRecords('rentals', 'rents-view', records.rentals);
-    renderRecords('payments', 'rents-view', records.payments);
-    renderRecords('maintenance', 'maintenance-view', records.maintenance);
-    renderRecords('contracts', 'contracts-view', records.contracts);
-    renderRecords('reports', 'reports-view', records.reports);
-    if (isAdmin) renderRecords('users', 'users-view', records.users);
-    if (isAdmin) renderRecords('sellers', 'sellers-view', records.sellers);
+    updateMetrics(summaryData);
+    renderFollowUpAlerts(summaryData.alerts || []);
+    await Promise.all(resourcesToLoad.map(async (resource, index) => {
+      try {
+        const result = await resourceRequests[index];
+        records[resource] = Array.isArray(result.data) ? result.data : [];
+      } catch (error) {
+        records[resource] = [];
+        console.error(`No se pudo cargar la tabla ${resource}:`, error);
+      }
+      renderResource(resource);
+    }));
+    try {
+      records.activity = (await activityRequest).data;
+    } catch (error) {
+      console.error('No se pudo cargar la actividad:', error);
+      records.activity = [];
+    }
+    // Segundo pase: los indicadores de cada vista combinan datos de varios recursos.
+    resourcesToLoad.forEach(renderResource);
+    updateMetrics(summaryData);
     renderActivity(records.activity);
-    updateMetrics(summaryResult.value.data);
     renderCollectionsOverview();
-    renderFollowUpAlerts(summaryResult.value.data.alerts || []);
   } catch (error) {
     console.error(error);
     if (/sesion|autenticacion/i.test(error.message)) showLogin();
     else showToast(error.message, true);
+  } finally {
+    setWorkspaceLoading(false);
   }
 }
 
 // Agrega acciones secundarias a las cabeceras de los modulos.
 function addSecondaryActions() {
   const actions = {
-    'clients-view': [['client', 'Agregar cliente']],
     'legal-view': [['contract', 'Generar contrato']],
     'finance-view': [['commission', 'Registrar comisión']],
     'rents-view': [['rental', 'Nueva renta']],
@@ -944,6 +1497,361 @@ function renderCollectionsOverview() {
         <ul>${expiringRentals.length ? expiringRentals.slice(0, 5).map(rentalItem).join('') : '<li class="collection-empty">No hay contratos por vencer en los siguientes 60 días.</li>'}</ul>
       </section>
     </div>`;
+}
+
+// Pre-carga del logotipo corporativo para su inserción en documentos PDF.
+let cachedLogoImage = null;
+function preloadLogo() {
+  if (cachedLogoImage) return Promise.resolve(cachedLogoImage);
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      cachedLogoImage = img;
+      resolve(img);
+    };
+    img.onerror = () => reject(new Error('No se pudo cargar el logotipo para el reporte.'));
+    img.src = 'estilo/Logo_bienes.jpeg';
+  });
+}
+
+// Genera un reporte oficial en formato PDF con diseño profesional y marca de agua.
+async function downloadPdfReport(resource = 'reports', selection = null) {
+  const jsPdfLib = window.jspdf?.jsPDF || window.jsPDF;
+  if (!jsPdfLib) {
+    return showToast('No se pudo cargar el componente de PDF. Inténtalo de nuevo.', true);
+  }
+
+  if (!selection && resource === 'reports' && reportDateFilter.from && reportDateFilter.to && reportDateFilter.from > reportDateFilter.to) {
+    return showToast('La fecha inicial no puede ser posterior a la fecha final.', true);
+  }
+
+  let data;
+  if (selection) {
+    const report = (records[resource] || []).find((item) =>
+      String(item.id) === String(selection.id) && item.operacion === selection.operacion);
+    if (!report) return showToast('No se encontró el reporte seleccionado. Actualiza la lista e inténtalo de nuevo.', true);
+    data = [report];
+  } else {
+    data = resource === 'reports'
+      ? filterReportsByDate(records[resource] || [])
+      : (records[resource] || []);
+
+    const panel = document.querySelector(`[data-record-panel="${resource}"]`);
+    const selectFilter = panel?.querySelector(`[data-record-filter="${resource}"]`)?.value;
+    const searchInput = panel?.querySelector(`[data-record-search="${resource}"]`)?.value?.trim().toLowerCase();
+
+    if (selectFilter && selectFilter !== 'Todas') {
+      data = data.filter((item) => String(item.actividad || item.operacion || item.estado || '').toLowerCase() === selectFilter.toLowerCase());
+    }
+    if (searchInput) {
+      data = data.filter((item) => Object.values(item).filter((val) => val !== null && val !== undefined).join(' ').toLowerCase().includes(searchInput));
+    }
+  }
+
+  if (!data.length) {
+    return showToast('No hay registros para generar el reporte en PDF.', true);
+  }
+
+  showToast('Generando reporte PDF profesional...');
+
+  try {
+    const doc = new jsPdfLib({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const pw = doc.internal.pageSize.getWidth();
+    const ph = doc.internal.pageSize.getHeight();
+
+    // 1. Franjas decorativas superiores
+    doc.setFillColor(25, 59, 58);
+    doc.rect(0, 0, pw, 4, 'F');
+    doc.setFillColor(239, 133, 111);
+    doc.rect(0, 4, pw, 1.5, 'F');
+
+    // 2. Identidad corporativa
+    const logoImg = await preloadLogo();
+    const logoRatio = logoImg.naturalHeight / logoImg.naturalWidth;
+    doc.addImage(logoImg, 'JPEG', 14, 8, 32, 32 * logoRatio, 'corporate-logo');
+
+    // 3. Formateo de fechas y metadatos
+    const now = new Date();
+    const folio = `REP-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(now.getTime()).slice(-4)}`;
+    const formatD = (val) => {
+      if (!val) return '—';
+      const s = String(val).slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+        const [y, m, d] = s.split('-');
+        return `${d}/${m}/${y}`;
+      }
+      const dt = new Date(val);
+      return Number.isNaN(dt.getTime()) ? String(val) : dt.toLocaleDateString('es-MX');
+    };
+
+    let periodoLabel = 'Histórico completo';
+    if (selection) {
+      periodoLabel = formatD(data[0].fecha);
+    } else if (reportDateFilter.from && reportDateFilter.to) {
+      periodoLabel = `${formatD(reportDateFilter.from)} al ${formatD(reportDateFilter.to)}`;
+    } else if (reportDateFilter.from) {
+      periodoLabel = `Desde ${formatD(reportDateFilter.from)}`;
+    } else if (reportDateFilter.to) {
+      periodoLabel = `Hasta ${formatD(reportDateFilter.to)}`;
+    }
+
+    const reportTitle = selection ? 'REPORTE INDIVIDUAL DE OPERACIÓN' : resource === 'reports' ? 'REPORTE EJECUTIVO DE OPERACIONES' : 'REPORTE EJECUTIVO DE COMISIONES';
+
+    // Cuadro de metadatos del documento
+    doc.setDrawColor(219, 227, 224);
+    doc.setFillColor(248, 250, 249);
+    doc.setLineWidth(0.2);
+    doc.roundedRect(pw - 78, 8.5, 64, 18, 1.5, 1.5, 'FD');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.6);
+    doc.setTextColor(25, 59, 58);
+    doc.text(reportTitle, pw - 75, 12.8);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(96, 115, 113);
+    doc.text(`Folio: ${folio}`, pw - 75, 17);
+    doc.text(`Emisión: ${now.toLocaleDateString('es-MX')} ${now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}`, pw - 75, 21);
+    doc.text(`Periodo: ${periodoLabel}`, pw - 75, 25);
+
+    // 4. Métricas e indicadores del reporte
+    const totalCount = data.length;
+    const salesRecords = data.filter((item) => String(item.operacion || '').toUpperCase() === 'VENTA');
+    const rentalsRecords = data.filter((item) => String(item.operacion || '').toUpperCase() === 'RENTA');
+    const purchaseRecords = data.filter((item) => String(item.operacion || '').toUpperCase() === 'COMPRA');
+    const totalVentasMonto = salesRecords.reduce((sum, item) => sum + Number(item.cobros || 0), 0);
+    const totalRentasMonto = rentalsRecords.reduce((sum, item) => sum + Number(item.cobros || 0), 0);
+    const totalComprasMonto = purchaseRecords.reduce((sum, item) => sum + Number(item.cobros || 0), 0);
+    const totalCobros = resource === 'reports' ? totalVentasMonto + totalRentasMonto
+      : data.reduce((sum, item) => sum + Number(item.monto_total || 0), 0);
+    const uniqueAgents = new Set(data.map((item) => item.vendedor || item.agente).filter(Boolean)).size;
+
+    // Tarjetas KPI ejecutivas
+    const kpiY = 30;
+    const kpiW = (pw - 28 - 9) / 4;
+    const kpis = resource === 'reports' ? [
+      { label: 'OPERACIONES', val: String(totalCount), sub: `${uniqueAgents} asesor${uniqueAgents === 1 ? '' : 'es'}` },
+      { label: 'COBROS', val: formatMoney(totalCobros), sub: 'Ventas y rentas' },
+      { label: 'COMPRAS', val: String(purchaseRecords.length), sub: formatMoney(totalComprasMonto) },
+      { label: 'VENTAS / RENTAS', val: `${salesRecords.length} / ${rentalsRecords.length}`, sub: 'Operaciones registradas' }
+    ] : [
+      { label: 'REGISTROS', val: String(totalCount), sub: 'Comisiones registradas' },
+      { label: 'TOTAL COMISIÓN', val: formatCommissionMoney(totalCobros), sub: 'Monto acumulado' },
+      { label: 'PAGADAS', val: String(data.filter((item) => String(item.estado).toUpperCase() === 'PAGADA').length), sub: 'Liquidadas' },
+      { label: 'PENDIENTES', val: String(data.filter((item) => String(item.estado).toUpperCase() === 'PENDIENTE').length), sub: 'Por cobrar' }
+    ];
+
+    kpis.forEach((kpi, idx) => {
+      const x = 14 + idx * (kpiW + 3);
+      doc.setFillColor(246, 248, 247);
+      doc.setDrawColor(219, 227, 224);
+      doc.roundedRect(x, kpiY, kpiW, 14, 1.5, 1.5, 'FD');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(96, 115, 113);
+      doc.text(kpi.label, x + 3, kpiY + 4);
+
+      doc.setFontSize(9.5);
+      doc.setTextColor(25, 59, 58);
+      doc.text(kpi.val, x + 3, kpiY + 9);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6);
+      doc.setTextColor(130, 145, 143);
+      doc.text(kpi.sub, x + 3, kpiY + 12.2);
+    });
+
+    // 5. Configuración de filas y columnas para AutoTable
+    let headColumns;
+    let bodyRows;
+    let footRows;
+    let columnStyles;
+    const cleanReportText = (val) => String(val || '').replace(/‚/g, 'é').replace(/\u201A/g, 'é');
+
+    if (resource === 'reports') {
+      headColumns = [[selection ? 'ID' : '#', 'Fecha', 'Vendedor / Asesor', 'Operación', 'Propiedad', 'Monto', 'Actividad']];
+      bodyRows = data.map((record, index) => [
+        String(selection ? record.id : index + 1),
+        formatD(record.fecha),
+        cleanReportText(record.vendedor || 'Sin vendedor'),
+        String(record.operacion || '—').toUpperCase(),
+        cleanReportText(record.propiedad || 'Sin propiedad'),
+        formatMoney(record.cobros),
+        record.actividad || '—'
+      ]);
+      footRows = [
+        ['', 'TOTALES', `Cobros: ${formatMoney(totalCobros)}`, `${salesRecords.length}V / ${rentalsRecords.length}R`, 'Costo compras', formatMoney(totalComprasMonto), '']
+      ];
+      columnStyles = {
+        0: { cellWidth: selection ? 15 : 10, halign: 'center' },
+        1: { cellWidth: 22, halign: 'center' },
+        2: { cellWidth: 36, halign: 'left' },
+        3: { cellWidth: 22, halign: 'center' },
+        4: { cellWidth: selection ? 43 : 48, halign: 'left' },
+        5: { cellWidth: 28, halign: 'right' },
+        6: { cellWidth: 16, halign: 'center' }
+      };
+    } else {
+      headColumns = [['#', 'Propiedad', '% Agencia', 'Operación', 'Comisión', 'Estado', 'Fecha']];
+      bodyRows = data.map((record, index) => [
+        String(index + 1),
+        record.propiedad || '—',
+        `${record.porcentaje_agencia || 0}%`,
+        formatCommissionMoney(record.monto_operacion),
+        formatCommissionMoney(record.monto_total),
+        String(record.estado || '—').toUpperCase(),
+        formatD(record.creado_en)
+      ]);
+      footRows = [
+        ['', 'TOTAL', '', '', formatCommissionMoney(totalCobros), `${totalCount} reg.`, '']
+      ];
+      columnStyles = {
+        0: { cellWidth: 10, halign: 'center' },
+        1: { cellWidth: 50, halign: 'left' },
+        2: { cellWidth: 18, halign: 'center' },
+        3: { cellWidth: 28, halign: 'right' },
+        4: { cellWidth: 28, halign: 'right' },
+        5: { cellWidth: 24, halign: 'center' },
+        6: { cellWidth: 24, halign: 'center' }
+      };
+    }
+
+    const autoTableOpts = {
+      startY: 48,
+      margin: { left: 14, right: 14, top: 16, bottom: 18 },
+      head: headColumns,
+      body: bodyRows,
+      foot: footRows,
+      theme: 'grid',
+      headStyles: {
+        fillColor: [25, 59, 58],
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: 7.5,
+        halign: 'center',
+        cellPadding: 2.5
+      },
+      bodyStyles: {
+        textColor: [28, 40, 38],
+        fontSize: 7,
+        cellPadding: 2.2,
+        lineColor: [221, 227, 225],
+        lineWidth: 0.15
+      },
+      alternateRowStyles: {
+        fillColor: [248, 250, 249]
+      },
+      footStyles: {
+        fillColor: [238, 243, 241],
+        textColor: [25, 59, 58],
+        fontStyle: 'bold',
+        fontSize: 7.5,
+        lineColor: [25, 59, 58],
+        lineWidth: 0.25
+      },
+      columnStyles,
+      willDrawCell: function (cellData) {
+        if (cellData.section === 'body') {
+          if (resource === 'reports') {
+            if (cellData.column.index === 3) {
+              const val = String(cellData.cell.raw || '').toUpperCase();
+              if (val === 'VENTA') {
+                cellData.cell.styles.textColor = [27, 94, 32];
+                cellData.cell.styles.fontStyle = 'bold';
+              } else if (val === 'RENTA') {
+                cellData.cell.styles.textColor = [13, 71, 161];
+                cellData.cell.styles.fontStyle = 'bold';
+              }
+            }
+            if (cellData.column.index === 5) {
+              cellData.cell.styles.fontStyle = 'bold';
+              cellData.cell.styles.textColor = [25, 59, 58];
+            }
+          } else {
+            if (cellData.column.index === 4) {
+              cellData.cell.styles.fontStyle = 'bold';
+              cellData.cell.styles.textColor = [25, 59, 58];
+            }
+            if (cellData.column.index === 5) {
+              const val = String(cellData.cell.raw || '').toUpperCase();
+              if (val === 'PAGADA') {
+                cellData.cell.styles.textColor = [27, 94, 32];
+                cellData.cell.styles.fontStyle = 'bold';
+              } else if (val === 'PENDIENTE') {
+                cellData.cell.styles.textColor = [180, 83, 9];
+                cellData.cell.styles.fontStyle = 'bold';
+              }
+            }
+          }
+        }
+      }
+    };
+
+    if (typeof doc.autoTable === 'function') {
+      doc.autoTable(autoTableOpts);
+    } else if (typeof window.autoTable === 'function') {
+      window.autoTable(doc, autoTableOpts);
+    } else if (window.jspdf && typeof window.jspdf.autoTable === 'function') {
+      window.jspdf.autoTable(doc, autoTableOpts);
+    } else {
+      throw new Error('No se pudo cargar el componente de tablas PDF.');
+    }
+
+    // 6. Marca de agua y pie de página en TODAS las páginas
+    const totalPages = doc.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+
+      // Franja de encabezado en páginas subsiguientes
+      if (i > 1) {
+        doc.setFillColor(25, 59, 58);
+        doc.rect(0, 0, pw, 3, 'F');
+        doc.setFillColor(239, 133, 111);
+        doc.rect(0, 3, pw, 1, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7);
+        doc.setTextColor(25, 59, 58);
+        doc.text(`BIENES Y NEGOCIOS RENATO • ${reportTitle} (Continuación)`, 14, 8);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6.5);
+        doc.setTextColor(96, 115, 113);
+        doc.text(`Folio: ${folio}`, pw - 14, 8, { align: 'right' });
+        doc.setDrawColor(219, 227, 224);
+        doc.setLineWidth(0.15);
+        doc.line(14, 10, pw - 14, 10);
+      }
+
+      // MARCA DE AGUA corporativa
+      doc.saveGraphicsState();
+      doc.setGState(new doc.GState({ opacity: 0.08 }));
+      const watermarkWidth = 160;
+      const watermarkHeight = watermarkWidth * logoRatio;
+      doc.addImage(logoImg, 'JPEG', (pw - watermarkWidth) / 2, (ph - watermarkHeight) / 2, watermarkWidth, watermarkHeight, 'corporate-logo');
+      doc.restoreGraphicsState();
+
+      // Pie de página profesional
+      doc.setDrawColor(219, 227, 224);
+      doc.setLineWidth(0.2);
+      doc.line(14, ph - 12, pw - 14, ph - 12);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(96, 115, 113);
+      doc.text('Bienes y Negocios Renato • Documento confidencial para uso administrativo interno', 14, ph - 7.5);
+      doc.text(`Página ${i} de ${totalPages} • ${now.toLocaleDateString('es-MX')} ${now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}`, pw - 14, ph - 7.5, { align: 'right' });
+    }
+
+    const dateStr = now.toISOString().slice(0, 10);
+    const fileName = selection
+      ? `reporte-${String(data[0].operacion).toLowerCase()}-${data[0].id}-${dateStr}.pdf`
+      : `${resource === 'reports' ? 'reporte-operaciones' : 'reporte-comisiones'}-${dateStr}.pdf`;
+    doc.save(fileName);
+    showToast('Reporte PDF descargado exitosamente.');
+  } catch (error) {
+    console.error('Error al generar PDF:', error);
+    showToast(error.message || 'Hubo un error al generar el PDF.', true);
+  }
 }
 
 // Exporta tablas y documentos a archivos descargables.
@@ -1093,13 +2001,20 @@ function openStatusForm(resource, id) {
   const fields = [renderField(['estado', 'Estado', 'select', true, options])];
   if (resource === 'maintenance') {
     const record = records.maintenance.find((item) => String(item.id_solicitud) === String(id));
+    if (!record) return;
+    fields[0].querySelector('select').value = record.estado;
+    const priorityField = renderField(['prioridad', 'Prioridad', 'select', true, [{ id: 'automatica', nombre: 'Automática según fecha límite' }, 'baja', 'normal', 'alta', 'urgente']]);
+    const deadlineField = renderField(['fecha_limite', 'Fecha límite', 'date']);
     const costField = renderField(['costo_final', 'Costo final', 'number']);
     const assigneeField = renderField(['asignado_a', 'Responsable', 'options', false, 'users']);
-    costField.querySelector('input').value = record?.costo_final ?? '';
-    assigneeField.querySelector('select').value = record?.asignado_a ?? '';
-    fields.push(costField, assigneeField);
+    priorityField.querySelector('select').value = record.prioridad_automatica ? 'automatica' : record.prioridad;
+    deadlineField.querySelector('input').value = String(record.fecha_limite || '').slice(0, 10);
+    costField.querySelector('input').value = record.costo_final ?? '';
+    assigneeField.querySelector('select').value = record.asignado_a ?? '';
+    fields.push(priorityField, deadlineField, costField, assigneeField);
   }
   dialog.querySelector('.workflow-fields').replaceChildren(...fields);
+  enableWorkflowSearchableSelects(form);
   dialog.showModal();
 }
 
@@ -1115,19 +2030,24 @@ function openPropertyEdit(id) {
   form.dataset.recordId = id;
   dialog.querySelector('h2').textContent = 'Editar propiedad';
   dialog.querySelector('.form-error').textContent = '';
-  const fields = [
-    ['titulo', 'Título', 'text', true], ['descripcion', 'Descripción', 'textarea'],
-    ['precio', 'Precio', 'number', true], ['imagen_url', 'Imagen de la propiedad (URL)', 'url'],
-    ['latitud', 'Latitud de Google Maps', 'number'], ['longitud', 'Longitud de Google Maps', 'number'],
+  const fields = renderFormSections([
+    ['', 'Datos de la propiedad', 'section'],
+    ['titulo', 'Título', 'text', true], ['costo_adquisicion', 'Costo de adquisición', 'number'], ['precio', 'Precio de venta o renta', 'number', true],
     ['estado_propiedad', 'Estado', 'select', true, ['Disponible', 'Reservada', 'Vendida', 'Rentada', 'Inactiva']],
     ...(isAdmin ? [['id_categoria', 'Categoría', 'options', true, 'categories']] : []),
-  ].map((definition) => {
+    ['descripcion', 'Descripción', 'textarea'],
+    ['', 'Ubicación', 'section'],
+    ['latitud', 'Latitud de Google Maps', 'number'], ['longitud', 'Longitud de Google Maps', 'number'],
+    ['', 'Fotografía', 'section'],
+    ['imagen', 'Cambiar imagen (JPEG, PNG o WebP; máximo 10 MB)', 'file'],
+  ], (definition) => {
     const element = renderField(definition);
     const input = element.querySelector('input, textarea, select');
-    input.value = definition[0] === 'id_categoria' ? record.id_categoria : record[definition[0]] ?? '';
+    if (definition[2] !== 'file') input.value = definition[0] === 'id_categoria' ? record.id_categoria : record[definition[0]] ?? '';
     return element;
   });
   dialog.querySelector('.workflow-fields').replaceChildren(...fields);
+  enableWorkflowSearchableSelects(form);
   dialog.showModal();
 }
 
@@ -1141,11 +2061,14 @@ function openSellerEdit(id) {
   form.dataset.recordId = id;
   dialog.querySelector('h2').textContent = 'Editar vendedor';
   dialog.querySelector('.form-error').textContent = '';
-  const fields = [
+  const fields = renderFormSections([
+    ['', 'Datos personales', 'section'],
     ['nombre', 'Nombre', 'text', true], ['apellido_paterno', 'Apellido paterno', 'text', true],
-    ['apellido_materno', 'Apellido materno', 'text'], ['correo', 'Correo', 'email', true],
+    ['apellido_materno', 'Apellido materno', 'text'],
+    ['', 'Contacto y acceso', 'section'],
+    ['correo', 'Correo', 'email', true],
     ['telefono', 'Teléfono', 'tel'], ['password', 'Nueva contraseña (opcional)', 'password'],
-  ].map((definition) => {
+  ], (definition) => {
     const element = renderField(definition);
     const input = element.querySelector('input, textarea, select');
     input.value = record[definition[0]] ?? '';
@@ -1168,9 +2091,12 @@ function openUserEdit(id) {
   form.dataset.recordId = id;
   dialog.querySelector('h2').textContent = 'Editar usuario o administrador';
   dialog.querySelector('.form-error').textContent = '';
-  const fields = [
+  const fields = renderFormSections([
+    ['', 'Datos personales', 'section'],
     ['nombre', 'Nombre', 'text', true], ['apellido_paterno', 'Apellido paterno', 'text', true],
-    ['apellido_materno', 'Apellido materno', 'text'], ['correo', 'Correo', 'email', true],
+    ['apellido_materno', 'Apellido materno', 'text'],
+    ['', 'Contacto y acceso', 'section'],
+    ['correo', 'Correo', 'email', true],
     ['telefono', 'Teléfono', 'tel'], ['password', 'Nueva contraseña (opcional)', 'password'],
     ['rol', 'Función', 'select', true, [
       { id: 'cliente', nombre: 'Cliente' },
@@ -1178,7 +2104,7 @@ function openUserEdit(id) {
       { id: 'vendedor', nombre: 'Vendedor' },
       { id: 'administrador', nombre: 'Administrador' },
     ]],
-  ].map((definition) => {
+  ], (definition) => {
     const element = renderField(definition);
     const input = element.querySelector('input, textarea, select');
     if (definition[0] === 'rol') input.value = record.rol === 'admin' ? 'administrador' : record.rol;
@@ -1334,6 +2260,7 @@ async function openClientHistory(id) {
   try {
     const result = await api.get(`clients/${id}/history`);
     content.innerHTML = renderClientHistory(result.data);
+    enableSearchableSelect(content.querySelector('[name="asignado_a"]'), 'Asignar a');
   } catch (requestError) {
     error.textContent = requestError.message;
     content.replaceChildren();
@@ -1361,6 +2288,7 @@ async function submitDialog(form) {
   const config = forms[kind];
   const error = dialog.querySelector('.form-error');
   error.textContent = '';
+  if (!validateWorkflowForm(form)) return;
   const submit = form.querySelector('[type="submit"]');
   submit.disabled = true;
   try {
@@ -1387,14 +2315,13 @@ async function submitDialog(form) {
         body: JSON.stringify(values),
       });
     } else if (kind === 'property-edit') {
-      const values = Object.fromEntries(new FormData(form));
-      values.precio = Number(values.precio);
+      const values = new FormData(form);
       ['latitud', 'longitud'].forEach((key) => {
-        if (values[key] === '') delete values[key];
-        else if (values[key] !== undefined) values[key] = Number(values[key]);
+        if (values.get(key) === '') values.delete(key);
       });
-      if (!values.id_categoria) delete values.id_categoria;
-      await api.request(`/api/properties/${form.dataset.recordId}`, { method: 'PUT', body: JSON.stringify(values) });
+      if (!values.get('id_categoria')) values.delete('id_categoria');
+      if (!form.querySelector('[name="imagen"]').files.length) values.delete('imagen');
+      await api.request(`/api/properties/${form.dataset.recordId}`, { method: 'PUT', body: values });
     } else if (kind === 'seller-edit') {
       const values = Object.fromEntries(new FormData(form));
       if (!values.password) delete values.password;
@@ -1405,15 +2332,16 @@ async function submitDialog(form) {
       await api.request(`/api/workflows/users/${form.dataset.recordId}`, { method: 'PATCH', body: JSON.stringify(values) });
     } else if (kind === 'document') {
       await api.create(config.resource, new FormData(form));
+    } else if (kind === 'property') {
+      const values = new FormData(form);
+      if (!form.querySelector('[name="imagen"]').files.length) values.delete('imagen');
+      await api.request('/api/properties', { method: 'POST', body: values });
     } else {
       const values = Object.fromEntries(new FormData(form));
       form.querySelectorAll('input[type="number"]').forEach((input) => {
         if (values[input.name] !== undefined && values[input.name] !== '') values[input.name] = Number(values[input.name]);
       });
-      if (kind === 'property' && values.amenidades) values.amenidades = values.amenidades.split(',').map((item) => item.trim()).filter(Boolean);
-      if (kind === 'property') {
-        await api.request('/api/properties', { method: 'POST', body: JSON.stringify(values) });
-      } else if (kind === 'contract') {
+      if (kind === 'contract') {
         const clientId = values.id_cliente;
         delete values.id_cliente;
         values.id_cliente = clientId === 'nuevo' ? null : Number(clientId);
@@ -1470,7 +2398,10 @@ async function handlePageAction(button) {
   if (viewId === 'portal-view') return window.open('/portal.html', '_blank', 'noopener');
   if (viewId === 'rents-view') return openForm('payment');
   if (viewId === 'finance-view') return downloadCsv('commissions');
-  if (viewId === 'reports-view') return downloadCsv('reports');
+  if (viewId === 'reports-view') {
+    if (button && button.dataset.action === 'download-csv-report') return downloadCsv('reports');
+    return downloadPdfReport('reports');
+  }
 }
 
 // Gestiona el inicio de sesion y los eventos delegados de las tablas y ventanas.
@@ -1481,7 +2412,11 @@ loginForm?.addEventListener('submit', async (event) => {
   errorElement.textContent = '';
   const formData = new FormData(loginForm);
   try {
-    await api.login(formData.get('correo'), formData.get('contrasena'));
+    const user = await api.login(formData.get('correo'), formData.get('contrasena'));
+    if (user.rol === 'cliente') {
+      window.location.assign('/portal-inquilinos.html');
+      return;
+    }
     hideLogin();
     addSecondaryActions();
     startNotificationPolling();
@@ -1494,6 +2429,17 @@ loginForm?.addEventListener('submit', async (event) => {
 document.addEventListener('click', async (event) => {
   const filter = event.target.closest('[data-record-filter]');
   if (filter) return;
+  document.querySelectorAll('.client-row-actions[open]').forEach((menu) => {
+    if (!menu.contains(event.target) || event.target.closest('button')) menu.open = false;
+  });
+  const tab = event.target.closest('[data-client-tab]');
+  if (tab) {
+    clientTableTab = tab.dataset.clientTab;
+    syncClientTabs();
+    const panel = document.querySelector('#clients-view [data-record-panel="clients"]');
+    if (panel) applyRecordFilters(panel, 'clients');
+    return;
+  }
   const openViewButton = event.target.closest('[data-open-view]');
   if (openViewButton) {
     const navigationButton = [...document.querySelectorAll('.nav-item')]
@@ -1505,6 +2451,7 @@ document.addEventListener('click', async (event) => {
   if (profileButton) {
     const menu = document.querySelector('.session-menu');
     if (menu) {
+      menu.classList.toggle('topbar-session-menu', !profileButton.matches('.profile-row'));
       menu.hidden = !menu.hidden;
       profileButton.setAttribute('aria-expanded', String(!menu.hidden));
     }
@@ -1585,6 +2532,26 @@ document.addEventListener('click', async (event) => {
     }
     return;
   }
+  const individualReportButton = event.target.closest('[data-download-report-id]');
+  if (individualReportButton) {
+    event.preventDefault();
+    return downloadPdfReport('reports', {
+      id: individualReportButton.dataset.downloadReportId,
+      operacion: individualReportButton.dataset.reportOperation,
+    });
+  }
+  const downloadReportPdfButton = event.target.closest('[data-download-report-pdf], [data-action="download-pdf-report"]');
+  if (downloadReportPdfButton) {
+    event.preventDefault();
+    try { await downloadPdfReport('reports'); } catch (error) { showToast(error.message, true); }
+    return;
+  }
+  const downloadReportCsvButton = event.target.closest('[data-download-report-csv], [data-action="download-csv-report"]');
+  if (downloadReportCsvButton) {
+    event.preventDefault();
+    try { downloadCsv('reports'); } catch (error) { showToast(error.message, true); }
+    return;
+  }
   const downloadButton = event.target.closest('[data-download-document]');
   if (downloadButton) {
     try { await downloadDocument(downloadButton.dataset.downloadDocument); } catch (error) { showToast(error.message, true); }
@@ -1656,13 +2623,18 @@ document.addEventListener('click', async (event) => {
     if (menu) {
       menu.hidden = !menu.hidden;
       notificationButton.setAttribute('aria-expanded', String(!menu.hidden));
-      if (!menu.hidden) loadNotifications();
+      if (!menu.hidden) loadNotifications().catch((error) => showToast(error.message, true));
     }
     return;
   }
   const notificationItem = event.target.closest('[data-notification-id]');
   if (notificationItem) {
     try {
+      if (notificationItem.dataset.entity === 'maintenance') {
+        const result = await api.get('maintenance');
+        records.maintenance = result.data;
+        renderRecords('maintenance', 'maintenance-view', records.maintenance);
+      }
       await api.request(`/api/workflows/notifications/${notificationItem.dataset.notificationId}/read`, {
         method: 'PATCH',
         body: JSON.stringify({}),
@@ -1671,6 +2643,12 @@ document.addEventListener('click', async (event) => {
         leads: 'clients', visits: 'visits', payments: 'rents', rentals: 'rents',
         maintenance: 'maintenance', clients: 'clients',
       }[notificationItem.dataset.entity];
+      if (notificationItem.dataset.entity === 'clients' || notificationItem.dataset.entity === 'leads') {
+        clientTableTab = notificationItem.dataset.entity === 'leads' ? 'potenciales' : 'todos';
+        syncClientTabs();
+        const clientsPanel = document.querySelector('#clients-view [data-record-panel="clients"]');
+        if (clientsPanel) applyRecordFilters(clientsPanel, 'clients');
+      }
       await loadNotifications();
       document.getElementById('notification-menu').hidden = true;
       if (destination) document.querySelector(`.nav-item[data-view="${destination}"]`)?.click();
@@ -1698,6 +2676,16 @@ document.addEventListener('submit', (event) => {
 });
 
 document.addEventListener('change', (event) => {
+  if (event.target.matches('[data-client-column]')) {
+    const panel = event.target.closest('[data-record-panel]');
+    const resource = panel.dataset.recordPanel;
+    const key = event.target.dataset.clientColumn;
+    if (event.target.checked) clientColumns[resource].add(key);
+    else clientColumns[resource].delete(key);
+    panel.querySelectorAll('[data-column-key]').forEach((cell) => {
+      if (cell.dataset.columnKey === key) cell.hidden = !event.target.checked;
+    });
+  }
   if (event.target.matches('#client-activity-form [name="tipo"]')) {
     const form = event.target.form;
     const dueDate = form.querySelector('[data-task-date]');
@@ -1746,11 +2734,58 @@ const search = document.getElementById('global-search');
 search?.addEventListener('input', () => {
   const query = search.value.toLocaleLowerCase();
   document.querySelectorAll('.persisted-panel tbody tr, #property-table tbody tr').forEach((row) => {
+    if (row.closest('[data-record-panel="clients"], [data-record-panel="leads"]')) return;
     row.hidden = !row.textContent.toLocaleLowerCase().includes(query);
   });
   document.querySelectorAll('.persisted-panel[data-record-panel]').forEach((panel) => {
-    paginatePanel(panel, panel.dataset.recordPanel, true);
+    const resource = panel.dataset.recordPanel;
+    if (resource === 'clients' || resource === 'leads') applyRecordFilters(panel, resource);
+    else paginatePanel(panel, resource, true);
   });
+});
+
+document.addEventListener('keydown', (event) => {
+  const tab = event.target.closest('[data-client-tab]');
+  if (tab && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
+    const tabs = [...tab.parentElement.querySelectorAll('[data-client-tab]')];
+    const index = tabs.indexOf(tab);
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1
+      : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+    event.preventDefault();
+    tabs[next].focus();
+    tabs[next].click();
+  }
+  if (event.key === 'Escape') {
+    const menu = event.target.closest('.client-row-actions[open]');
+    if (menu) {
+      menu.open = false;
+      menu.querySelector('summary').focus();
+    }
+  }
+});
+
+function positionClientMenu(details) {
+  const anchor = details.querySelector('summary').getBoundingClientRect();
+  const menu = details.querySelector('.client-row-menu');
+  const bounds = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(8, Math.min(anchor.right - bounds.width, window.innerWidth - bounds.width - 8))}px`;
+  menu.style.top = `${Math.max(8, Math.min(window.innerHeight - bounds.height - 8, anchor.bottom + bounds.height > window.innerHeight - 8 ? anchor.top - bounds.height : anchor.bottom))}px`;
+}
+
+document.addEventListener('toggle', (event) => {
+  const details = event.target;
+  if (!details.matches('.client-row-actions') || !details.open) return;
+  document.querySelectorAll('.client-row-actions[open]').forEach((other) => {
+    if (other !== details) other.open = false;
+  });
+  positionClientMenu(details);
+}, true);
+
+document.addEventListener('scroll', () => {
+  document.querySelectorAll('.client-row-actions[open]').forEach(positionClientMenu);
+}, true);
+window.addEventListener('resize', () => {
+  document.querySelectorAll('.client-row-actions[open]').forEach(positionClientMenu);
 });
 
 document.addEventListener('click', (event) => {
@@ -1763,7 +2798,11 @@ document.addEventListener('click', (event) => {
   paginatePanel(panel, resource);
 });
 
-if (api.token) {
+if (api.token && JSON.parse(localStorage.getItem('habita_user') || '{}').rol === 'cliente') {
+  localStorage.setItem('habita_tenant_token', api.token);
+  api.logout();
+  window.location.replace('/portal-inquilinos.html');
+} else if (api.token) {
   hideLogin();
   addSecondaryActions();
   startNotificationPolling();

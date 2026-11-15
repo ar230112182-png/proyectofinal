@@ -1,0 +1,7 @@
+BEGIN;
+
+ALTER TABLE public.comisiones
+  ADD COLUMN IF NOT EXISTS id_cliente INTEGER REFERENCES public.clientes(id_cliente),
+  ADD COLUMN IF NOT EXISTS es_demo BOOLEAN NOT NULL DEFAULT FALSE;
+
+COMMIT;

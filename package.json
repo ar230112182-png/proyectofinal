@@ -8,6 +8,14 @@
     "dev": "node --watch server/app.js",
     "db:migrate": "node server/migrate.js",
     "db:seed": "node server/seed.js",
+    "db:seed:500": "node server/seed_500.js",
+    "db:seed:1000": "node server/seed_1000.js",
+    "db:seed:coincidencias": "node server/seed_coincidencias.js",
+    "db:seed:negociaciones": "node server/seed_negociaciones.js",
+    "db:seed:modulos": "node server/seed_modulos.js",
+    "db:seed:clientes-comisiones": "node server/seed_clientes_comisiones.js",
+    "db:seed:propiedades-categorias": "node server/seed_propiedades_categorias.js",
+    "db:seed:compras-reportes": "node server/seed_compras_reportes.js",
     "db:seed:1500": "psql -v ON_ERROR_STOP=1 -f bd/seed_1500.sql"
   },
   "dependencies": {
@@ -16,6 +24,8 @@
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.9",
     "multer": "^2.4.0",
     "pg": "^8.13.1"
   }
