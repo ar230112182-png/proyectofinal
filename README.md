@@ -710,5 +710,9 @@ cualquier credencial de prueba antes de habilitar una cuenta.
 
 ## Licencia
 
-Este repositorio no declara una licencia de código abierto. No redistribuyas
-el código sin autorización de sus propietarios.
+El código, la documentación y los recursos originales de este proyecto se
+distribuyen bajo la licencia [MIT](./LICENSE), con titularidad de Saul Zavala
+Martines del grupo ZM.
+
+Las dependencias y los componentes de terceros conservan sus propios derechos,
+licencias y avisos de copyright; esta licencia no los reemplaza.

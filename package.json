@@ -2,6 +2,7 @@
   "name": "bienesyraises",
   "version": "1.0.0",
   "private": true,
+  "license": "MIT",
   "type": "commonjs",
   "scripts": {
     "start": "node server/app.js",
