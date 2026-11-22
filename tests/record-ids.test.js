@@ -6,9 +6,10 @@ const vm = require('node:vm');
 
 const main = fs.readFileSync(path.join(__dirname, '..', 'js', 'cruds', 'main.js'), 'utf8');
 const tenant = fs.readFileSync(path.join(__dirname, '..', 'js', 'cruds', 'tenant-portal.js'), 'utf8');
+const index = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const section = (source, start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
 
-test('record tables render the ID from each resource and preserve row actions', () => {
+test('record tables hide IDs and preserve row actions', () => {
   const panels = new Map();
   const view = {
     querySelector(selector) {
@@ -55,13 +56,13 @@ test('record tables render the ID from each resource and preserve row actions', 
     context.record = { [idKey]: '123', estado: 'PENDIENTE' };
     vm.runInContext("renderRecords(resource, 'view', [record])", context);
     const html = panels.get(resource).innerHTML;
-    assert.match(html, /<thead><tr><th(?: [^>]*)?>ID<\/th>/, resource);
-    assert.match(html, resource === 'maintenance'
-      ? /<tbody><tr[^>]*data-priority-heading="normal"[^>]*>[\s\S]*?<tr[^>]*><td>123<\/td>/
-      : /<tbody><tr[^>]*><td(?: [^>]*)?>123<\/td>/, resource);
+    assert.doesNotMatch(html, /<th(?: [^>]*)?>ID<\/th>/, resource);
+    assert.doesNotMatch(html, /<td(?: [^>]*)?>123<\/td>/, resource);
   }
   assert.match(panels.get('clients').innerHTML, /data-client-history="123"/);
   assert.match(panels.get('clients').innerHTML, /class="client-row-actions"/);
+  assert.match(panels.get('clients').innerHTML, /aria-label="Acciones de cliente"/);
+  assert.doesNotMatch(panels.get('clients').innerHTML, /aria-label="Acciones del registro 123"/);
   assert.match(panels.get('clients').innerHTML, /data-column-key="ciudad" hidden/);
   assert.doesNotMatch(panels.get('clients').innerHTML, /data-record-action="portal-access"/);
   context.isCurrentUserAdmin = () => true;
@@ -147,7 +148,7 @@ test('active clients combine local and global search and retain pagination', () 
     recordFilters: { clients: { search: '', from: '', to: '' } },
     document: { getElementById: () => globalSearch },
   });
-  vm.runInContext(section(main, 'const PAGE_SIZE = 20;', '// Aplica busqueda, categoria'), context);
+  vm.runInContext(section(main, 'const PAGE_SIZE =', '// Aplica busqueda, categoria'), context);
   vm.runInContext("applyRecordFilters(panel, 'clients')", context);
   assert.deepEqual(rows.map((row) => row.hidden), [false, true, true]);
   assert.equal(count.textContent, '1 registros de 3');
@@ -168,7 +169,9 @@ test('active clients combine local and global search and retain pagination', () 
   assert.equal(empty.hidden, false);
 });
 
-test('recent properties include the property ID and span all columns when empty', () => {
+test('recent properties hide the property ID and span all columns when empty', () => {
+  assert.doesNotMatch(index.match(/<table class="data-table" id="property-table">[\s\S]*?<\/table>/)[0], /<th>ID<\/th>/);
+  assert.match(index, /<td colspan="6" class="empty-records">Cargando propiedades/);
   const body = {};
   const context = vm.createContext({
     document: { querySelector: () => body },
@@ -178,12 +181,13 @@ test('recent properties include the property ID and span all columns when empty'
   vm.runInContext(section(main, 'function renderDashboardProperties(', 'let lastSummaryData'), context);
   context.properties = [{ id_propiedad: 31, titulo: 'Casa', precio: 100 }];
   vm.runInContext('renderDashboardProperties(properties)', context);
-  assert.match(body.innerHTML, /<tr><td>31<\/td>/);
+  assert.doesNotMatch(body.innerHTML, /<td>31<\/td>/);
+  assert.match(body.innerHTML, /<strong>Casa<\/strong>/);
   vm.runInContext('renderDashboardProperties([])', context);
-  assert.match(body.innerHTML, /colspan="7"/);
+  assert.match(body.innerHTML, /colspan="6"/);
 });
 
-test('tenant payment history renders the payment ID', () => {
+test('tenant payment history hides the payment ID', () => {
   const accountSection = { querySelector: () => null };
   const context = vm.createContext({ accountSection });
   vm.runInContext(section(tenant, 'function escapeHtml(', '// Agrega autenticacion'), context);
@@ -194,6 +198,7 @@ test('tenant payment history renders the payment ID', () => {
     payments: [{ id_pago: 42, propiedad: 'Casa', periodo: '2026-01-01', monto: 100, estado: 'PAGADO' }],
   };
   vm.runInContext('renderAccount(data)', context);
-  assert.match(accountSection.innerHTML, /<th>ID<\/th><th>Propiedad<\/th>/);
-  assert.match(accountSection.innerHTML, /<tr><td>42<\/td><td>Casa<\/td>/);
+  assert.doesNotMatch(accountSection.innerHTML, /<th>ID<\/th>/);
+  assert.match(accountSection.innerHTML, /<tr><td>Casa<\/td>/);
+  assert.doesNotMatch(accountSection.innerHTML, /<td>42<\/td>/);
 });

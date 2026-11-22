@@ -31,6 +31,7 @@ sesión después de reiniciar el servidor y no mostrar el formulario de acceso.
 Usa **Salir** en el menú de sesión para volver a iniciar sesión. Iniciar el
 servidor no ejecuta el seed ni restablece contraseñas. Una cuenta con rol
 `cliente` que inicia sesión desde el panel es dirigida al portal de inquilinos.
+El menú de sesión también ofrece un acceso directo al portal de inquilinos.
 
 ## Funcionalidades
 
@@ -73,21 +74,63 @@ permisos de documentos del portal también son exclusivos del administrador.
 | **Inventario y propiedades** | Título, categoría, tipo de operación, costo de adquisición, precio de venta o renta, descripción, superficie, habitaciones, baños, estacionamientos, estado, amenidades, imagen, coordenadas y dirección (calle, número, colonia, ciudad, estado y código postal). | Crear, editar campos permitidos, cambiar disponibilidad, retirar del listado y abrir ubicación en mapa. Categoría solo la cambia un administrador. |
 | **Clientes** | Nombre, apellidos, correo, teléfono, CURP, dirección, ciudad, estado, código postal y estado activo. | Crear, activar/desactivar, consultar historial, agregar notas/tareas y gestionar acceso al portal/documentos cuando se tiene permiso. |
 | **Clientes potenciales** | Nombre, correo, teléfono, origen, ciudad preferida, presupuesto mínimo/máximo, habitaciones mínimas, tipo/categoría, operación y estado. | Registrar desde el panel o desde el portal público, cambiar estado, asociar interés y generar coincidencias. Al cerrar venta o renta, un prospecto con correo coincidente puede marcarse como convertido. |
-| **Motor de coincidencias** | Prospecto, inmueble, puntuación y fecha de generación. | Ejecutar el cálculo y consultar coincidencias guardadas. |
-| **Agenda y citas** | Cliente, inmueble, fecha y hora, agente, motivo y estado. | Agendar y actualizar el estado de una cita. |
+| **Motor de coincidencias** | Prospecto, inmueble, puntuación, explicación y fecha de generación. | Generar recomendaciones, consultar propiedades no disponibles con su estado, precio, operación y ubicación, revisar generaciones y coincidencias retiradas, mostrar el teléfono y abrir Gmail con `saul391302@gmail.com` para escribir al prospecto. |
+| **Agenda y citas** | Cliente, inmueble, fecha y hora, agente, motivo y estado. | Agendar y actualizar citas; consultar el calendario por semana o mes y navegar entre periodos. Al agendar desde una coincidencia, el cliente y el inmueble quedan fijados; solo se editan fecha/hora y motivo. |
 | **Legal y expediente digital** | Inmueble, tipo de documento, nombre/tipo de archivo, tamaño, estado y fecha. | Cargar y descargar documentos. Se aceptan PDF, DOC/DOCX, JPEG, PNG y WebP, hasta 10 MB por archivo. |
 | **Negociaciones y ventas** | Oferta: inmueble, monto, tipo (`OFERTA` o `CONTRAPROPUESTA`) y notas. Venta: inmueble, cliente, agente, precio y fecha. Contrato: operación, inmueble, cliente, precio, fecha, dimensiones y observaciones. | Registrar ofertas y cambiar su estado; registrar ventas (administrador); crear contratos de venta o renta, consultar mapa y generar/imprimir su formato. |
-| **Comisiones y finanzas** | Vendedor, cliente, inmueble, valor del inmueble, porcentaje, comisión, estado y fecha. | El administrador puede registrar una comisión del 5 % del precio vigente del inmueble y cambiar su estado. Los registros demo se identifican en la tabla. |
-| **Mantenimiento** | Inmueble, renta opcional, asunto, descripción, prioridad, responsable, costo estimado/final y fecha límite. | Crear y actualizar solicitudes. Prioridades: `baja`, `normal`, `alta`, `urgente`. Estados: `pendiente`, `en_proceso`, `completada`, `cancelada`. La renta seleccionada debe pertenecer al inmueble elegido. |
+| **Comisiones y finanzas** | Vendedor, cliente, inmueble, valor del inmueble, porcentaje, comisión, estado y fecha. | El administrador puede registrar una comisión del 5 % del precio vigente del inmueble y cambiar su estado entre `PENDIENTE` y `PAGADA`. Los registros demo se identifican en la tabla. |
+| **Mantenimiento** | Inmueble, renta opcional, asunto, descripción, prioridad, responsable, costo estimado/final y fecha límite. | Crear y actualizar solicitudes; filtrar mediante pestañas **Todas**, **Urgente**, **Alta**, **Normal** y **Baja**, con sus conteos. Estados: `pendiente`, `en_proceso`, `completada`, `cancelada`. La renta seleccionada debe pertenecer al inmueble elegido. |
 | **Cobranza y renovaciones** | Renta, inmueble, cliente, monto mensual, inicio/fin, periodo de pago, importe, estado y fecha de pago. | Consultar vencimientos y adeudos, registrar pagos, cambiar su estado e imprimir/guardar recibos. |
 | **Vendedores** | Nombre, apellidos, correo, teléfono, rol, estado activo y comisión mensual. | Editar, activar/desactivar y eliminar; solo administrador. |
 | **Usuarios y administradores** | Nombre, apellidos, correo, teléfono, rol, estado activo y fecha de registro. | Crear, editar, activar/desactivar y eliminar; la contraseña inicial debe tener al menos 12 caracteres. Solo administrador. |
 | **Reportes** | Vendedor, monto, operación, inmueble, fecha y actividad; incluye compras completadas con agente, ventas y rentas. | Filtrar por fechas y actividad; descargar cada registro en PDF desde sus acciones, o exportar el informe en PDF o CSV. |
 
-Las tablas muestran el ID de cada registro. En Reportes, el ID corresponde a la
-compra, venta o renta indicada en la columna Operación. En **Clientes**, las pestañas
-**Todos**, **Activos**, **Inactivos** y **Potenciales** cambian la tabla visible; el control
-**Columnas** permite mostrar campos adicionales y el menú de cada fila reúne sus acciones.
+Todas las tablas de registros, incluida la tabla de propiedades recientes del
+resumen, permiten mostrar u ocultar columnas desde **Columnas**.
+
+En **Motor de coincidencias**, pulsa **Generar coincidencias** para recalcular
+las propiedades disponibles de prospectos activos. La operación indicada es
+obligatoria; ciudad, presupuesto, habitaciones y categoría son preferencias con
+pesos 35, 36, 14 y 8, respectivamente. El porcentaje se normaliza sobre los
+criterios indicados; una propiedad sin datos para un criterio indicado no recibe
+sus puntos. Si no hay preferencias puntuables se muestran sugerencias «Sin
+puntuación». Los resultados se paginan sin limitar la cantidad por prospecto.
+
+El cálculo es manual: cambios posteriores de preferencias o disponibilidad
+requieren volver a generarlo; la nueva generación reemplaza resultados obsoletos.
+Los resultados anteriores a la migración no se muestran como recomendaciones
+actuales. Para agendar, se sugiere un cliente registrado solo cuando coincide un
+correo único y se pide confirmación; si no existe, hay que registrarlo primero.
+Las visitas no convierten automáticamente al prospecto en cliente.
+
+Puedes combinar filtros de puntuación mínima, ciudad, precio de la propiedad,
+operación, favoritos y contacto; se aplican antes de paginar. Los favoritos y
+el estado pendiente/contactado son personales y se conservan cuando una
+coincidencia se retira o vuelve a aparecer. Las retiradas con seguimiento se
+consultan por separado. Marcar un contacto es manual.
+
+Cada generación registra los resultados nuevos, modificados y retirados y
+destaca las propiedades que dejaron de estar disponibles. Los cambios se
+detectan al generar, no automáticamente; los avisos resumidos llegan a
+vendedores y administradores activos. Los resultados existentes sirven de
+referencia para la primera generación con historial, sin inventar historial
+anterior.
+
+**Enviar correo** abre una redacción de Gmail dirigida al prospecto y selecciona
+la cuenta `saul391302@gmail.com`. **Compartir por correo** prepara un mensaje
+con los datos de la propiedad para revisar; no lo envía ni marca el contacto
+automáticamente. El teléfono se muestra como texto y no inicia una llamada.
+Para compartir por WhatsApp, los teléfonos mexicanos de 10 dígitos usan el
+prefijo +52; para otros países incluye `+` y el código. Opcionalmente,
+configura `PUBLIC_PORTAL_URL` en `.env` con la dirección pública de la aplicación
+(por ejemplo `https://ejemplo.com`), reinicia el servidor y verifica que el
+portal sea accesible. Sin esa configuración, el mensaje no incluye enlace.
+No se aceptan direcciones locales o privadas.
+
+Las tablas ocultan los identificadores técnicos; se conservan para las acciones
+y las operaciones de la API. En **Clientes**, las pestañas
+**Todos**, **Activos**, **Inactivos** y **Potenciales** cambian la tabla visible;
+el menú de cada fila reúne sus acciones.
 En los formularios, los campos de selección de registros permiten escribir un
 nombre o ID y elegir una opción en el mismo control. Las listas de opciones
 fijas, como estados y tipos de operación, se mantienen desplegables.
@@ -265,11 +308,12 @@ No subas `.env` al repositorio. Está excluido mediante `.gitignore`.
 npm run db:migrate
 ```
 
-Las migraciones `bd/migrations/001_*.sql` a `011_*.sql` agregan extensiones de
-flujo, auditoría, contratos, roles, estado activo, campos de propiedades,
-índices, portales y mantenimiento. Deben ejecutarse sobre una base compatible
-con las tablas requeridas por la aplicación; no reemplazan esa base. El
-ejecutor las procesa en orden de nombre.
+El ejecutor procesa en orden de nombre todos los archivos `NNN_*.sql` presentes
+en `bd/migrations` (actualmente hasta la migración 021). Incluyen extensiones de
+flujo, auditoría, contratos, roles, propiedades, índices, portales,
+mantenimiento, coincidencias y compatibilidad del esquema de auditoría. Deben
+ejecutarse sobre una base compatible con las tablas requeridas por la
+aplicación; no reemplazan ni convierten por sí solas el esquema base.
 
 ### 6. Crear datos iniciales opcionales
 
@@ -348,17 +392,24 @@ PostgreSQL; no valida que todas las tablas y columnas estén instaladas.
 | --- | --- |
 | `npm start` | Inicia el servidor Express |
 | `npm run dev` | Inicia el servidor con `node --watch` |
-| `npm run db:migrate` | Ejecuta todas las migraciones SQL |
+| `npm run db:migrate` | Aplica en orden las migraciones SQL de `bd/migrations` |
 | `npm run db:seed` | Inserta datos de demostración y usuario administrador |
-| `npm run db:seed:1500` | Ejecuta `bd/seed_1500.sql` con `psql`; requiere argumentos/conexión PostgreSQL |
+| `npm run db:seed:500` | Ejecuta `bd/seed_500.sql` para cargar el lote demo de 500 |
+| `npm run db:seed:1000` | Ejecuta `bd/seed_1000.sql` para cargar el lote demo de 1000 |
+| `npm run db:seed:coincidencias` | Carga prospectos, coincidencias e historial demo del motor |
+| `npm run db:seed:negociaciones` | Carga datos de demostración para negociaciones |
+| `npm run db:seed:modulos` | Carga datos de demostración para citas, expedientes, rentas, pagos, mantenimiento y comisiones |
 | `npm run db:seed:clientes-comisiones` | Inserta un lote identificable de 1500 clientes y 1500 comisiones de demostración |
+| `npm run db:seed:propiedades-categorias` | Inserta propiedades demo para las categorías adicionales |
+| `npm run db:seed:compras-reportes` | Inserta compras demo para las métricas y reportes |
+| `npm run db:seed:1500 -- -U postgres -d bienes_raices` | Ejecuta `bd/seed_1500.sql` con `psql`; requiere una base de pruebas compatible |
 
 ## Estructura principal
 
 ```text
 bd/
   BD.postgresql.sql       Esquema heredado (ver nota de compatibilidad)
-  migrations/             Migraciones incrementales 001–011
+  migrations/             Migraciones incrementales 001–021 (consecutivos faltantes)
   seed_1500.sql           Datos de prueba del modelo anterior
 server/
   app.js                  Servidor Express, archivos estáticos y errores
@@ -411,6 +462,16 @@ aplica en orden alfabético:
 | `013_commission_client.sql` | Vincula comisiones con clientes y marca los registros de demostración. Las comisiones anteriores conservan el cliente sin especificar. |
 | `015_maintenance_priority.sql` | Prioridad automática por fecha límite, sin cambiar las prioridades manuales existentes. |
 | `016_property_categories.sql` | Categorías adicionales para el registro de propiedades. |
+| `018_matching_explanations.sql` | Explicaciones y puntuaciones opcionales de coincidencias, y fecha de la última generación. Requiere ejecutar `npm run db:migrate` antes de usar el motor actualizado. |
+| `019_matching_tracking.sql` | Seguimiento personal, historial y cambios de coincidencias. Requiere aplicar la migración antes de usar las nuevas funciones. |
+| `020_matching_demo_history.sql` | Marca los registros demostrativos del historial y los cambios de coincidencias. |
+| `021_audit_trigger_schema_compatibility.sql` | Ajusta el disparador de auditoría al esquema actual, que almacena cambios en `detalle`, y mantiene compatibilidad con esquemas anteriores. |
+
+`npm run db:seed:coincidencias` también agrega un inmueble vendido, una
+generación y un seguimiento claramente identificados como demostración para
+mostrar el historial del Motor de coincidencias. Ejecuta antes
+`npm run db:migrate`; el seed es idempotente y requiere al menos una propiedad
+disponible para crear el ejemplo.
 
 `npm run db:seed:propiedades-categorias` agrega 50 propiedades ficticias por
 cada una de las 18 categorías nuevas. Se identifican con `[DEMO]`, utilizan
@@ -490,6 +551,10 @@ Todas estas rutas requieren vendedor o administrador, excepto las listas
 | `GET /api/workflows/properties/:id/map` | Vendedor o administrador | Devuelve ubicación/mapa de una propiedad. |
 | `GET /api/workflows/contracts/:id/map` | Vendedor o administrador | Devuelve ubicación asociada a un contrato. |
 | `POST /api/workflows/matching/run` | Vendedor o administrador | Calcula y guarda coincidencias entre prospectos y propiedades. |
+| `GET /api/workflows/matching/results` | Vendedor o administrador | Consulta resultados paginados y filtros de puntuación, ciudad, precio, operación y seguimiento personal. |
+| `PATCH /api/workflows/matching/tracking/:leadId/:propertyId` | Vendedor o administrador | Actualiza favorito o contacto del usuario autenticado. |
+| `GET /api/workflows/matching/history`, `/retired`, `/changes` | Vendedor o administrador | Consulta el historial, seguimiento retirado y propiedades no disponibles de la última generación. |
+| `GET /api/workflows/matching/config` | Vendedor o administrador | Devuelve la dirección pública opcional para compartir propiedades. |
 | `GET /api/workflows/notifications` | Vendedor o administrador | Lista notificaciones del usuario. |
 | `PATCH /api/workflows/notifications/:id/read` | Vendedor o administrador | Marca una notificación como leída. |
 | `POST /api/workflows/users` | Administrador | Crea usuario o administrador; contraseña inicial de al menos 12 caracteres. |
@@ -504,9 +569,9 @@ Los campos admitidos por la actualización genérica son:
 | `visits` | `estado`, `fecha_cita`, `motivo` |
 | `offers` | `estado`, `notas` |
 | `rentals` | `estado`, `fecha_fin` |
-| `payments` | `estado`, `pagado_en` |
+| `payments` | `estado` (`pagado_en` se actualiza automáticamente) |
 | `commissions` | `estado` |
-| `maintenance` | `estado`, `asignado_a`, `costo_final` |
+| `maintenance` | `estado`, `asignado_a`, `costo_final`, `prioridad`, `fecha_limite` |
 
 ### Archivos y portales
 
@@ -593,10 +658,12 @@ prioridad, activar o desactivar el modo automático y modificar la fecha límite
 Los reportes de inquilinos conservan la prioridad manual que eligen al crearlos.
 Para habilitar esta función aplica la migración `015_maintenance_priority.sql`.
 
-**Cobranza y renovaciones** reúne pagos de renta y contratos activos. Muestra
-adeudos vencidos, cobros previstos para los próximos 30 días y contratos que
-vencen dentro de los próximos 60 días. Los pagos se pueden marcar como pagados;
-el sistema registra la fecha de pago y habilita la descarga de un recibo
+**Cobranza y renovaciones** reúne pagos de renta y contratos activos o
+cancelados. Muestra todos los adeudos vencidos; **Próximos cobros** incluye pagos
+pendientes o vencidos dentro de los 10 días anteriores y posteriores a su
+periodo; **Renovaciones por atender** incluye contratos cuya fecha de fin esté
+dentro de los 15 días anteriores y 10 posteriores. Al marcar un pago como
+`PAGADO`, se registra automáticamente `pagado_en` y se habilita su recibo
 imprimible. Para habilitar solicitudes de mantenimiento, aplica también la
 migración `011_maintenance_requests.sql` mediante `npm run db:migrate`.
 
@@ -654,7 +721,15 @@ entorno de despliegue.
 - Verifica que exista `.env`.
 - Comprueba que `DATABASE_URL` sea correcta.
 - Revisa que PostgreSQL esté iniciado.
-- Ejecuta `npm install`.
+- Ejecuta `npm install` si faltan dependencias.
+- Ejecuta `npm start` desde la carpeta que contiene `package.json`, no desde
+  una carpeta de descarga incompleta. Por ejemplo, si clonaste el proyecto en
+  `C:\Users\saul3\proyectofinal`:
+
+```powershell
+Set-Location C:\Users\saul3\proyectofinal
+npm start
+```
 
 ### La API devuelve `database: unavailable`
 
@@ -668,8 +743,18 @@ psql "$env:DATABASE_URL" -c "SELECT 1;"
 
 ### El navegador muestra una versión antigua
 
-Recarga con `Ctrl + F5`, borra la caché o reinicia el servidor. Los archivos
-estáticos incluyen versiones en sus URL para evitar caché después de cambios.
+Después de cambiar código del servidor, detén el proceso anterior con `Ctrl+C`
+en su terminal y vuelve a iniciarlo desde la carpeta del proyecto con
+`npm start`. Luego recarga el navegador con `Ctrl + F5`. Los archivos estáticos
+incluyen versiones en sus URL para evitar caché después de cambios.
+
+### Error interno al cambiar el estado de pagos o comisiones
+
+Ejecuta `npm run db:migrate` desde la carpeta del proyecto para aplicar las
+migraciones pendientes, incluida `021_audit_trigger_schema_compatibility.sql`.
+Reinicia después el servidor para cargar el código actualizado. Si el error
+continúa, revisa la excepción completa en la terminal del servidor; la interfaz
+solo muestra un mensaje genérico.
 
 ### El formulario de acceso no aparece
 

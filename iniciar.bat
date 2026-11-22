@@ -1,9 +1,7 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-set "APP_IP=192.168.1.139"
 set "APP_PORT=3007"
-set "APP_URL=http://%APP_IP%:%APP_PORT%"
 
 if not exist ".env" (
   echo No se encontro el archivo .env en esta carpeta.
@@ -42,14 +40,22 @@ if errorlevel 1 (
 
 echo Iniciando la aplicacion...
 curl.exe --silent --fail --connect-timeout 1 --max-time 2 http://localhost:%APP_PORT%/api/health >nul 2>nul
-if not errorlevel 1 goto ready
+if not errorlevel 1 (
+  call :check_server_version
+  if errorlevel 1 goto outdated_server
+  goto ready
+)
 
 echo La aplicacion escuchara en todas las interfaces de red.
 start "Bienes y Raises - servidor" /D "%~dp0" cmd /k "set HOST=0.0.0.0&&set PORT=%APP_PORT%&&npm start"
 echo Esperando al servidor y a la base de datos...
 for /L %%i in (1,1,60) do (
   curl.exe --silent --fail --connect-timeout 1 --max-time 2 http://localhost:%APP_PORT%/api/health >nul 2>nul
-  if not errorlevel 1 goto ready
+  if not errorlevel 1 (
+    call :check_server_version
+    if errorlevel 1 goto outdated_server
+    goto ready
+  )
   ping -n 2 127.0.0.1 >nul
 )
 
@@ -58,18 +64,30 @@ echo Revisa los errores en la ventana "Bienes y Raises - servidor".
 pause
 exit /b 1
 
+:outdated_server
+echo El servidor que ocupa el puerto %APP_PORT% no tiene la version actual.
+echo Cierra la ventana donde se ejecuto npm start y vuelve a ejecutar este iniciador.
+echo Si no encuentras esa ventana, revisa el proceso que ocupa el puerto %APP_PORT%.
+pause
+exit /b 1
+
 :ready
 echo Servidor y PostgreSQL listos.
 echo Acceso desde este equipo: http://localhost:%APP_PORT%/
-echo Acceso desde otro dispositivo: %APP_URL%/
+echo Acceso desde otro dispositivo conectado a la misma red:
 set "IP_FOUND="
-for /f "delims=" %%I in ('powershell -NoProfile -Command "(Get-NetIPAddress -AddressFamily IPv4 -IPAddress '%APP_IP%' -ErrorAction SilentlyContinue).IPAddress"') do set "IP_FOUND=%%I"
-if not defined IP_FOUND (
-  echo AVISO: Este equipo no tiene asignada la IP %APP_IP%.
-  echo Configura esa IP en el adaptador de red o usa la IP mostrada por ipconfig.
-  echo El servidor esta iniciado, pero %APP_URL% no funcionara hasta asignar esa IP.
-  start "" "http://localhost:%APP_PORT%/"
-  exit /b 0
+for /f "delims=" %%I in ('powershell -NoProfile -Command "Get-NetAdapter -Physical | Where-Object { $_.Status -eq 'Up' } | ForEach-Object { Get-NetIPAddress -InterfaceIndex $_.ifIndex -AddressFamily IPv4 -AddressState Preferred } | Where-Object { -not $_.SkipAsSource -and $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } | Select-Object -ExpandProperty IPAddress -Unique"') do (
+  echo   http://%%I:%APP_PORT%/
+  set "IP_FOUND=1"
 )
-start "" "%APP_URL%/"
+if not defined IP_FOUND (
+  echo No se detecto una direccion IPv4 de red. Comprueba la conexion y ejecuta ipconfig.
+)
+start "" "http://localhost:%APP_PORT%/"
 exit /b 0
+
+:check_server_version
+set "API_STATUS="
+for /f "delims=" %%S in ('curl.exe --silent --output nul --write-out "%%{http_code}" --connect-timeout 1 --max-time 2 http://localhost:%APP_PORT%/api/workflows/matching/results') do set "API_STATUS=%%S"
+if "%API_STATUS%"=="401" exit /b 0
+exit /b 1

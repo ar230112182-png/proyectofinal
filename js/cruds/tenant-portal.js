@@ -52,7 +52,7 @@ function renderAccount(data) {
     </li>
   `).join('');
   const paymentRows = payments.map((payment) => `
-    <tr><td>${escapeHtml(payment.id_pago)}</td><td>${escapeHtml(payment.propiedad)}</td><td>${escapeHtml(formatDate(payment.periodo))}</td>
+    <tr><td>${escapeHtml(payment.propiedad)}</td><td>${escapeHtml(formatDate(payment.periodo))}</td>
       <td>${escapeHtml(formatMoney(payment.monto))}</td><td>${escapeHtml(payment.estado)}</td>
       <td>${escapeHtml(payment.pagado_en ? formatDate(payment.pagado_en) : '—')}</td></tr>
   `).join('');
@@ -103,7 +103,7 @@ function renderAccount(data) {
       ${reportRows ? `<ul class="tenant-list">${reportRows}</ul>` : '<p class="portal-empty">Aún no has enviado reportes.</p>'}
     </section>
     <section class="tenant-section"><h2>Historial de pagos</h2>
-      ${paymentRows ? `<div class="property-table-wrap"><table class="data-table"><thead><tr><th>ID</th><th>Propiedad</th><th>Periodo</th><th>Monto</th><th>Estado</th><th>Fecha de pago</th></tr></thead><tbody>${paymentRows}</tbody></table></div>` : '<p class="portal-empty">Aún no hay pagos registrados.</p>'}
+      ${paymentRows ? `<div class="property-table-wrap"><table class="data-table"><thead><tr><th>Propiedad</th><th>Periodo</th><th>Monto</th><th>Estado</th><th>Fecha de pago</th></tr></thead><tbody>${paymentRows}</tbody></table></div>` : '<p class="portal-empty">Aún no hay pagos registrados.</p>'}
     </section>
     <section class="tenant-section"><h2>Contratos</h2>
       ${contractRows ? `<p class="tenant-section-intro">El PDF es un formato con los datos registrados; no es una copia firmada.</p><ul class="tenant-list">${contractRows}</ul>` : '<p class="portal-empty">No hay contratos disponibles.</p>'}

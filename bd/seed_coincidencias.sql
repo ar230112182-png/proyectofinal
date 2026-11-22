@@ -126,4 +126,88 @@ WHERE l.estado NOT IN ('CERRADO', 'PERDIDO')
 ON CONFLICT (id_lead, id_propiedad) DO UPDATE
 SET puntuacion = EXCLUDED.puntuacion, creada_en = EXCLUDED.creada_en;
 
+-- 4. Agregar un ejemplo identificable para las secciones de historial.
+INSERT INTO propiedades
+  (id_categoria, id_usuario, titulo, descripcion, precio, superficie,
+   habitaciones, banos, estacionamientos, tipo_operacion, estado_propiedad,
+   latitud, longitud, amenidades, exclusiva, eliminado)
+SELECT
+  plantilla.id_categoria, plantilla.id_usuario,
+  '[DEMO] Inmueble retirado del motor de coincidencias',
+  'Registro demostrativo para consultar el historial de propiedades no disponibles.',
+  plantilla.precio, plantilla.superficie, plantilla.habitaciones, plantilla.banos,
+  plantilla.estacionamientos, plantilla.tipo_operacion, 'Vendida',
+  plantilla.latitud, plantilla.longitud, plantilla.amenidades, FALSE, FALSE
+FROM propiedades plantilla
+WHERE plantilla.eliminado = FALSE
+  AND LOWER(plantilla.estado_propiedad) = 'disponible'
+  AND NOT EXISTS (
+    SELECT 1 FROM propiedades
+    WHERE titulo = '[DEMO] Inmueble retirado del motor de coincidencias'
+  )
+ORDER BY plantilla.id_propiedad
+LIMIT 1;
+
+INSERT INTO direcciones
+  (id_propiedad, calle, numero, colonia, ciudad, estado, codigo_postal)
+SELECT p.id_propiedad, 'Calle de demostración', '100', 'Centro', 'Ciudad de Mexico', 'CDMX', '06000'
+FROM propiedades p
+WHERE p.titulo = '[DEMO] Inmueble retirado del motor de coincidencias'
+  AND NOT EXISTS (SELECT 1 FROM direcciones d WHERE d.id_propiedad = p.id_propiedad);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM propiedades
+    WHERE titulo = '[DEMO] Inmueble retirado del motor de coincidencias'
+  ) THEN
+    RAISE EXCEPTION 'No se encontró una propiedad disponible para crear el registro de demostración. Carga propiedades disponibles y vuelve a ejecutar el seed.';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM leads WHERE correo = 'demo.lead01@example.test') THEN
+    RAISE EXCEPTION 'No se encontró el prospecto de demostración demo.lead01@example.test.';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM usuarios
+    WHERE activo = TRUE AND rol IN ('agente', 'administrador')
+  ) THEN
+    RAISE EXCEPTION 'Se requiere un agente o administrador activo para crear el seguimiento demostrativo.';
+  END IF;
+END $$;
+
+INSERT INTO historial_generaciones_coincidencias
+  (id_usuario, total, nuevos, modificados, retirados, propiedades_nuevas, propiedades_no_disponibles, es_demo)
+SELECT
+  (SELECT id_usuario FROM usuarios
+   WHERE activo = TRUE AND rol IN ('agente', 'administrador')
+   ORDER BY id_usuario LIMIT 1),
+  0, 0, 0, 1, 0, 1, TRUE
+WHERE NOT EXISTS (
+  SELECT 1 FROM historial_generaciones_coincidencias WHERE es_demo = TRUE
+);
+
+INSERT INTO coincidencias_retiradas (id_generacion, id_lead, id_propiedad, no_disponible, es_demo)
+SELECT h.id_generacion, l.id_lead, p.id_propiedad, TRUE, TRUE
+FROM historial_generaciones_coincidencias h
+JOIN leads l ON l.correo = 'demo.lead01@example.test'
+JOIN propiedades p ON p.titulo = '[DEMO] Inmueble retirado del motor de coincidencias'
+WHERE h.es_demo = TRUE
+  AND NOT EXISTS (
+    SELECT 1 FROM coincidencias_retiradas r
+    WHERE r.id_generacion = h.id_generacion
+      AND r.id_lead = l.id_lead
+      AND r.id_propiedad = p.id_propiedad
+  );
+
+INSERT INTO seguimiento_coincidencias (id_usuario, id_lead, id_propiedad, favorito, contactado)
+SELECT u.id_usuario, l.id_lead, p.id_propiedad, TRUE, TRUE
+FROM usuarios u
+CROSS JOIN leads l
+CROSS JOIN propiedades p
+WHERE u.activo = TRUE
+  AND u.rol IN ('agente', 'administrador')
+  AND l.correo = 'demo.lead01@example.test'
+  AND p.titulo = '[DEMO] Inmueble retirado del motor de coincidencias'
+ON CONFLICT (id_usuario, id_lead, id_propiedad) DO UPDATE
+SET favorito = TRUE, contactado = TRUE, actualizado_en = CURRENT_TIMESTAMP;
+
 COMMIT;

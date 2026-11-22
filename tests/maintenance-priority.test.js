@@ -79,7 +79,7 @@ test('priority grouping honors pagination and combined status and search filters
   const heading = (priority) => ({ dataset: { priorityHeading: priority }, hidden: false });
   const row = (priority, status, text) => ({ dataset: { priority, recordStatus: status, recordText: text, recordDate: '2026-01-01' }, hidden: false });
   const headings = [heading('urgente'), heading('normal')];
-  const rows = [...Array.from({ length: 20 }, () => row('urgente', 'pendiente', 'fuga')), row('normal', 'completada', 'puerta')];
+  const rows = [...Array.from({ length: 18 }, () => row('urgente', 'pendiente', 'fuga')), row('normal', 'completada', 'puerta')];
   const filter = { value: 'Todas' };
   const count = {};
   const nav = {};
@@ -92,21 +92,72 @@ test('priority grouping honors pagination and combined status and search filters
       return null;
     },
   };
-  const context = vm.createContext({ panel, recordFilters: { maintenance: { search: '', from: '', to: '' } } });
-  vm.runInContext(section('const PAGE_SIZE = 20;', '// Aplica busqueda, categoria'), context);
+  const context = vm.createContext({
+    panel,
+    maintenancePriorityTab: 'todas',
+    recordFilters: { maintenance: { search: '', from: '', to: '' } },
+  });
+  vm.runInContext(section('const PAGE_SIZE =', '// Aplica busqueda, categoria'), context);
   vm.runInContext("applyRecordFilters(panel, 'maintenance')", context);
   assert.deepEqual(headings.map((item) => item.hidden), [false, true]);
-  vm.runInContext("tablePages.maintenance = 2; paginatePanel(panel, 'maintenance')", context);
+  vm.runInContext("tablePages.maintenance = 4; paginatePanel(panel, 'maintenance')", context);
   assert.deepEqual(headings.map((item) => item.hidden), [true, false]);
   filter.value = 'completada';
   context.recordFilters.maintenance.search = 'puerta';
   vm.runInContext("applyRecordFilters(panel, 'maintenance')", context);
   assert.deepEqual(headings.map((item) => item.hidden), [true, false]);
-  assert.equal(count.textContent, '1 registros de 21');
+  assert.equal(count.textContent, '1 registros de 19');
   context.recordFilters.maintenance.search = 'fuga';
   vm.runInContext("applyRecordFilters(panel, 'maintenance')", context);
   assert.deepEqual(headings.map((item) => item.hidden), [true, true]);
-  assert.equal(count.textContent, '0 registros de 21');
+  assert.equal(count.textContent, '0 registros de 19');
+
+  filter.value = 'Todas';
+  context.recordFilters.maintenance.search = '';
+  context.maintenancePriorityTab = 'urgente';
+  vm.runInContext("applyRecordFilters(panel, 'maintenance')", context);
+  assert.equal(count.textContent, '18 registros de 19');
+  assert.ok(rows.filter((item) => item.dataset.priority === 'normal').every((item) => item.hidden));
+  context.maintenancePriorityTab = 'alta';
+  vm.runInContext("applyRecordFilters(panel, 'maintenance')", context);
+  assert.equal(count.textContent, '0 registros de 19');
+});
+
+test('maintenance priority tabs show counts and synchronize selected state', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'js', 'cruds', 'main.js'), 'utf8');
+  const section = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
+  const tabs = ['todas', 'urgente', 'alta', 'normal', 'baja'].map((priority) => ({
+    dataset: { maintenancePriority: priority },
+    count: { textContent: '' },
+    querySelector() { return this.count; },
+    setAttribute(name, value) { this[name] = value; },
+  }));
+  const panel = { setAttribute(name, value) { this[name] = value; } };
+  const view = {
+    querySelectorAll: () => tabs,
+    querySelector: () => panel,
+  };
+  const context = vm.createContext({
+    document: { getElementById: () => view },
+    records: { maintenance: [
+      { prioridad: 'urgente' }, { prioridad: 'alta' }, { prioridad: 'normal' },
+    ] },
+    maintenancePriorityTab: 'alta',
+  });
+  vm.runInContext(section('function syncMaintenanceTabs()', '// Renderiza tablas'), context);
+  vm.runInContext('syncMaintenanceTabs()', context);
+  assert.deepEqual(tabs.map((tab) => tab['aria-selected']), ['false', 'false', 'true', 'false', 'false']);
+  assert.deepEqual(tabs.map((tab) => tab.tabIndex), [-1, -1, 0, -1, -1]);
+  assert.deepEqual(tabs.map((tab) => tab.count.textContent), ['3', '1', '1', '1', '0']);
+  assert.equal(panel['aria-labelledby'], 'maintenance-tab-alta');
+});
+
+test('maintenance status filters do not add a duplicate searchable dropdown', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'js', 'cruds', 'main.js'), 'utf8');
+  assert.match(source, /querySelectorAll\('select:not\(\[data-record-filter\]\)'\)/);
+  const index = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  assert.match(index, /data-maintenance-priority="urgente"/);
+  assert.match(index, /data-maintenance-priority="baja"/);
 });
 
 test('PostgreSQL computes exact date boundaries independently of status', { skip: !process.env.TEST_MAINTENANCE_DB }, async () => {

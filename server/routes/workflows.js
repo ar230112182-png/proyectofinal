@@ -5,6 +5,7 @@ const multer = require('multer');
 const pool = require('../db');
 const { requireAuth, requireRole } = require('../middleware');
 const { createRentalContractPdf } = require('../contract-pdf');
+const { regenerateMatches } = require('../matching');
 
 const router = express.Router();
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -1328,50 +1329,193 @@ router.post('/documents', requireAuth, requireRole('agente', 'administrador'), u
 });
 
 router.post('/matching/run', requireAuth, requireRole('agente', 'administrador'), async (request, response, next) => {
+  let client;
   try {
-    const matches = await pool.query(`
-      SELECT l.id_lead, p.id_propiedad,
-        LEAST(100, (CASE WHEN pref.ciudad IS NULL OR LOWER(pref.ciudad) = LOWER(d.ciudad) THEN 35 ELSE 0 END)
-          + (CASE WHEN pref.precio_min IS NULL OR p.precio >= pref.precio_min THEN 18 ELSE 0 END)
-          + (CASE WHEN pref.precio_max IS NULL OR p.precio <= pref.precio_max THEN 18 ELSE 0 END)
-          + (CASE WHEN pref.habitaciones_min IS NULL OR p.habitaciones >= pref.habitaciones_min THEN 14 ELSE 0 END)
-          + (CASE WHEN pref.tipo IS NULL OR LOWER(pref.tipo) = LOWER(cat.nombre) THEN 8 ELSE 0 END)
-          + (CASE WHEN pref.operacion IS NULL OR LOWER(pref.operacion) = LOWER(p.tipo_operacion) THEN 7 ELSE 0 END)) AS score
-      FROM leads l
-      JOIN LATERAL (SELECT * FROM preferencias_lead WHERE id_lead = l.id_lead ORDER BY id_preferencia DESC LIMIT 1) pref ON TRUE
-      JOIN propiedades p ON p.eliminado = FALSE AND LOWER(p.estado_propiedad) = 'disponible'
-      JOIN categorias cat ON cat.id_categoria = p.id_categoria
-      LEFT JOIN direcciones d ON d.id_propiedad = p.id_propiedad
-      WHERE l.estado NOT IN ('CERRADO', 'PERDIDO')
-        AND (pref.ciudad IS NULL OR LOWER(pref.ciudad) = LOWER(d.ciudad))
-        AND (pref.precio_min IS NULL OR p.precio >= pref.precio_min)
-        AND (pref.precio_max IS NULL OR p.precio <= pref.precio_max)
-        AND (pref.habitaciones_min IS NULL OR p.habitaciones >= pref.habitaciones_min)
-        AND (pref.tipo IS NULL OR LOWER(pref.tipo) = LOWER(cat.nombre))
-        AND (pref.operacion IS NULL OR LOWER(pref.operacion) = LOWER(p.tipo_operacion))
-    `);
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      for (const match of matches.rows) {
-        await client.query(`
-          INSERT INTO coincidencias (id_lead, id_propiedad, puntuacion)
-          VALUES ($1, $2, $3)
-          ON CONFLICT (id_lead, id_propiedad) DO UPDATE
-          SET puntuacion = EXCLUDED.puntuacion, creada_en = CURRENT_TIMESTAMP
-        `, [match.id_lead, match.id_propiedad, match.score]);
-      }
-      await client.query('COMMIT');
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
-    await audit(request.user.id_usuario, 'ejecutar', 'coincidencias', null, { generadas: matches.rowCount });
-    return response.json({ data: matches.rows, count: matches.rowCount });
+    client = await pool.connect();
+    const generation = await regenerateMatches(client, request.user.id_usuario, audit);
+    return response.json({ data: generation, count: Number(generation.total) });
+  } catch (error) {
+    if (error.status === 409) return response.status(409).json({ error: error.message });
+    return next(error);
+  } finally {
+    if (client) client.release();
+  }
+});
+
+router.get('/matching/results', requireAuth, requireRole('agente', 'administrador'), async (request, response, next) => {
+  const { page, limit, offset } = parsePagination(request.query);
+  const search = String(request.query.search || '').trim().slice(0, 200);
+  const globalSearch = String(request.query.global || '').trim().slice(0, 200);
+  const { puntuacion, ciudad, precio_min: priceMin, precio_max: priceMax, operacion, favoritos, contacto } = request.query;
+  const validNumber = (value, max = Infinity) => value === undefined || value === ''
+    || (isFiniteNumber(value) && Number(value) >= 0 && Number(value) <= max);
+  if (!validNumber(puntuacion, 100) || !validNumber(priceMin) || !validNumber(priceMax)
+    || (priceMin && priceMax && Number(priceMin) > Number(priceMax))
+    || !isValidOptionalString(ciudad, 100)
+    || (operacion && !['VENTA', 'RENTA'].includes(operacion))
+    || (favoritos && favoritos !== '1')
+    || (contacto && !['pendiente', 'contactado'].includes(contacto))) {
+    return response.status(400).json({ error: 'Revisa los filtros de coincidencias.' });
+  }
+  const numberOrNull = (value) => value === undefined || value === '' ? null : Number(value);
+  const values = [search, globalSearch, request.user.id_usuario, numberOrNull(puntuacion),
+    (ciudad || '').trim(), numberOrNull(priceMin), numberOrNull(priceMax),
+    operacion || '', favoritos === '1', contacto || ''];
+  const joins = `FROM coincidencias m JOIN leads l ON l.id_lead = m.id_lead
+    JOIN propiedades p ON p.id_propiedad = m.id_propiedad
+    LEFT JOIN LATERAL (SELECT ciudad FROM direcciones WHERE id_propiedad = p.id_propiedad
+      ORDER BY id_direccion DESC LIMIT 1) d ON TRUE
+    LEFT JOIN seguimiento_coincidencias s ON s.id_usuario = $3
+      AND s.id_lead = m.id_lead AND s.id_propiedad = m.id_propiedad`;
+  const where = `m.version_calculo = 1 AND ($1 = '' OR
+    POSITION(LOWER($1) IN LOWER(CONCAT_WS(' ', l.nombre, l.correo, l.telefono, p.titulo))) > 0)
+    AND ($2 = '' OR POSITION(LOWER($2) IN LOWER(CONCAT_WS(' ', l.nombre, l.correo, l.telefono, p.titulo))) > 0)
+    AND ($4::numeric IS NULL OR m.puntuacion >= $4)
+    AND ($5 = '' OR POSITION(LOWER($5) IN LOWER(COALESCE(d.ciudad, ''))) > 0)
+    AND ($6::numeric IS NULL OR p.precio >= $6)
+    AND ($7::numeric IS NULL OR p.precio <= $7)
+    AND ($8 = '' OR UPPER(p.tipo_operacion) = $8)
+    AND (NOT $9::boolean OR COALESCE(s.favorito, FALSE))
+    AND ($10 = '' OR ($10 = 'contactado') = COALESCE(s.contactado, FALSE))`;
+  try {
+    const [results, stats, generation] = await Promise.all([
+      pool.query(`SELECT m.id_coincidencia, m.id_lead, l.nombre AS lead, l.correo, l.telefono,
+        m.id_propiedad, p.titulo AS propiedad, p.eliminado, p.estado_propiedad, p.precio, p.tipo_operacion,
+        d.ciudad, m.puntuacion, m.explicacion, m.creada_en, m.nueva, m.propiedad_nueva,
+        COALESCE(s.favorito, FALSE) AS favorito, COALESCE(s.contactado, FALSE) AS contactado
+        ${joins}
+        WHERE ${where}
+        ORDER BY m.puntuacion DESC NULLS LAST, m.id_coincidencia DESC LIMIT $11 OFFSET $12`, [...values, limit, offset]),
+      pool.query(`SELECT COUNT(*)::int AS total, COUNT(DISTINCT m.id_lead)::int AS prospectos,
+        ROUND(AVG(m.puntuacion)) AS promedio ${joins} WHERE ${where}`, values),
+      pool.query('SELECT generada_en FROM generaciones_coincidencias WHERE id = 1'),
+    ]);
+    const total = stats.rows[0].total;
+    return response.json({
+      data: results.rows,
+      meta: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)),
+        prospectos: stats.rows[0].prospectos, promedio: stats.rows[0].promedio,
+        generadaEn: generation.rows[0]?.generada_en || null },
+    });
   } catch (error) {
     return next(error);
+  }
+});
+
+router.patch('/matching/tracking/:leadId/:propertyId', requireAuth, requireRole('agente', 'administrador'), async (request, response, next) => {
+  const { favorito, contactado } = request.body || {};
+  if (!isPositiveId(request.params.leadId) || !isPositiveId(request.params.propertyId)
+    || (favorito === undefined && contactado === undefined)
+    || (favorito !== undefined && typeof favorito !== 'boolean')
+    || (contactado !== undefined && typeof contactado !== 'boolean')
+    || Object.keys(request.body).some((key) => !['favorito', 'contactado'].includes(key))) {
+    return response.status(400).json({ error: 'Datos de seguimiento inválidos.' });
+  }
+  try {
+    const result = await pool.query(`
+      INSERT INTO seguimiento_coincidencias (id_usuario, id_lead, id_propiedad, favorito, contactado)
+      SELECT $1, $2, $3, COALESCE($4::boolean, FALSE), COALESCE($5::boolean, FALSE)
+      WHERE EXISTS (SELECT 1 FROM coincidencias WHERE id_lead = $2 AND id_propiedad = $3 AND version_calculo = 1)
+        OR EXISTS (SELECT 1 FROM seguimiento_coincidencias WHERE id_usuario = $1 AND id_lead = $2 AND id_propiedad = $3)
+      ON CONFLICT (id_usuario, id_lead, id_propiedad) DO UPDATE SET
+        favorito = COALESCE($4::boolean, seguimiento_coincidencias.favorito),
+        contactado = COALESCE($5::boolean, seguimiento_coincidencias.contactado),
+        actualizado_en = CURRENT_TIMESTAMP
+      RETURNING favorito, contactado`, [
+      request.user.id_usuario, request.params.leadId, request.params.propertyId,
+      favorito === undefined ? null : favorito, contactado === undefined ? null : contactado,
+    ]);
+    if (!result.rowCount) return response.status(404).json({ error: 'Coincidencia no encontrada.' });
+    return response.json({ data: result.rows[0] });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/matching/history', requireAuth, requireRole('agente', 'administrador'), async (request, response, next) => {
+  const { page, limit, offset } = parsePagination(request.query);
+  try {
+    const [rows, count] = await Promise.all([
+      pool.query(`SELECT h.*, u.nombre AS usuario FROM historial_generaciones_coincidencias h
+        LEFT JOIN usuarios u ON u.id_usuario = h.id_usuario
+        ORDER BY h.id_generacion DESC LIMIT $1 OFFSET $2`, [limit, offset]),
+      pool.query('SELECT COUNT(*)::int AS total FROM historial_generaciones_coincidencias'),
+    ]);
+    const total = count.rows[0].total;
+    return response.json({ data: rows.rows, meta: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) } });
+  } catch (error) { return next(error); }
+});
+
+router.get('/matching/retired', requireAuth, requireRole('agente', 'administrador'), async (request, response, next) => {
+  const { page, limit, offset } = parsePagination(request.query);
+  const base = `FROM seguimiento_coincidencias s
+    JOIN leads l ON l.id_lead = s.id_lead JOIN propiedades p ON p.id_propiedad = s.id_propiedad
+    LEFT JOIN LATERAL (SELECT r.no_disponible, r.es_demo, h.generada_en FROM coincidencias_retiradas r
+      JOIN historial_generaciones_coincidencias h ON h.id_generacion = r.id_generacion
+      WHERE r.id_lead = s.id_lead AND r.id_propiedad = s.id_propiedad
+      ORDER BY r.id_generacion DESC LIMIT 1) retired ON TRUE
+    WHERE s.id_usuario = $1 AND (s.favorito OR s.contactado)
+      AND NOT EXISTS (SELECT 1 FROM coincidencias m
+        WHERE m.id_lead = s.id_lead AND m.id_propiedad = s.id_propiedad AND m.version_calculo = 1)`;
+  try {
+    const [rows, count] = await Promise.all([
+      pool.query(`SELECT s.id_lead, s.id_propiedad, s.favorito, s.contactado,
+        l.nombre AS lead, p.titulo AS propiedad, p.estado_propiedad, retired.generada_en, retired.es_demo,
+        (p.eliminado OR (p.estado_propiedad IS NOT NULL AND LOWER(p.estado_propiedad) <> 'disponible')) AS no_disponible
+        ${base} ORDER BY s.actualizado_en DESC, s.id_lead DESC, s.id_propiedad DESC LIMIT $2 OFFSET $3`,
+      [request.user.id_usuario, limit, offset]),
+      pool.query(`SELECT COUNT(*)::int AS total ${base}`, [request.user.id_usuario]),
+    ]);
+    const total = count.rows[0].total;
+    return response.json({ data: rows.rows, meta: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) } });
+  } catch (error) { return next(error); }
+});
+
+router.get('/matching/changes', requireAuth, requireRole('agente', 'administrador'), async (request, response, next) => {
+  const { page, limit, offset } = parsePagination(request.query);
+  const base = `FROM (
+    SELECT DISTINCT r.id_propiedad, r.es_demo FROM coincidencias_retiradas r
+    WHERE r.id_generacion = (SELECT MAX(id_generacion) FROM historial_generaciones_coincidencias)
+      AND r.no_disponible
+  ) removed JOIN propiedades p ON p.id_propiedad = removed.id_propiedad
+    LEFT JOIN LATERAL (SELECT calle, numero, colonia, ciudad, estado, codigo_postal
+      FROM direcciones WHERE id_propiedad = p.id_propiedad
+      ORDER BY id_direccion DESC LIMIT 1) d ON TRUE`;
+  try {
+    const [rows, count] = await Promise.all([
+      pool.query(`SELECT p.id_propiedad, p.titulo AS propiedad, p.estado_propiedad,
+          p.eliminado, p.precio, p.tipo_operacion, removed.es_demo,
+          CONCAT_WS(', ', NULLIF(TRIM(d.calle), ''), NULLIF(TRIM(d.numero), ''),
+            NULLIF(TRIM(d.colonia), ''), NULLIF(TRIM(d.ciudad), ''),
+            NULLIF(TRIM(d.estado), ''), NULLIF(TRIM(d.codigo_postal), '')) AS ubicacion ${base}
+        ORDER BY p.id_propiedad DESC LIMIT $1 OFFSET $2`, [limit, offset]),
+      pool.query(`SELECT COUNT(*)::int AS total ${base}`),
+    ]);
+    const total = count.rows[0].total;
+    return response.json({ data: rows.rows, meta: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) } });
+  } catch (error) { return next(error); }
+});
+
+router.get('/matching/config', requireAuth, requireRole('agente', 'administrador'), (request, response) => {
+  const configured = process.env.PUBLIC_PORTAL_URL;
+  if (!configured) return response.json({ portalUrl: null });
+  try {
+    const url = new URL(configured);
+    const hostname = url.hostname.toLowerCase();
+    const ip = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    const privateIp = ip && (Number(ip[1]) === 10 || Number(ip[1]) === 127
+      || (Number(ip[1]) === 192 && Number(ip[2]) === 168)
+      || (Number(ip[1]) === 172 && Number(ip[2]) >= 16 && Number(ip[2]) <= 31)
+      || (Number(ip[1]) === 169 && Number(ip[2]) === 254)
+      || Number(ip[1]) === 0);
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password
+      || url.search || url.hash || hostname === 'localhost' || hostname.endsWith('.localhost')
+      || hostname.endsWith('.local') || hostname.startsWith('[') || privateIp) {
+      return response.status(503).json({ error: 'PUBLIC_PORTAL_URL debe ser una dirección pública válida.' });
+    }
+    return response.json({ portalUrl: new URL('portal.html', url.href.endsWith('/') ? url : `${url.href}/`).href });
+  } catch {
+    return response.status(503).json({ error: 'PUBLIC_PORTAL_URL debe ser una dirección pública válida.' });
   }
 });
 
@@ -1822,7 +1966,7 @@ router.patch('/:resource/:id', requireAuth, async (request, response, next) => {
     visits: { table: 'citas', key: 'id_cita', fields: ['estado', 'fecha_cita', 'motivo'] },
     offers: { table: 'ofertas', key: 'id_oferta', fields: ['estado', 'notas'] },
     rentals: { table: 'rentas', key: 'id_renta', fields: ['estado', 'fecha_fin'] },
-    payments: { table: 'pagos_renta', key: 'id_pago', fields: ['estado', 'pagado_en'] },
+    payments: { table: 'pagos_renta', key: 'id_pago', fields: ['estado'] },
     commissions: { table: 'comisiones', key: 'id_comision', fields: ['estado'] },
     maintenance: {
       table: 'solicitudes_mantenimiento',
@@ -1892,6 +2036,7 @@ router.patch('/:resource/:id', requireAuth, async (request, response, next) => {
       }
     }
     const databaseUpdates = updates.flatMap(([key, value]) => {
+      if (resource === 'payments' && key === 'estado') return [[key, String(value).toUpperCase()]];
       if (resource === 'maintenance' && key === 'prioridad') {
         return value === 'automatica'
           ? [['prioridad_automatica', true]]
@@ -1903,10 +2048,10 @@ router.patch('/:resource/:id', requireAuth, async (request, response, next) => {
     const values = databaseUpdates.map(([, value]) => value);
     let assignments = databaseUpdates.map(([key], index) => `${key} = $${index + 1}`).join(', ');
     if (resource === 'payments') {
-      const stateUpdate = updates.find(([key]) => key === 'estado');
+      const stateUpdate = databaseUpdates.find(([key]) => key === 'estado');
       if (stateUpdate) {
-        const stateParameter = updates.findIndex(([key]) => key === 'estado') + 1;
-        assignments += `, pagado_en = CASE WHEN UPPER($${stateParameter}) = 'PAGADO' THEN COALESCE(pagado_en, CURRENT_TIMESTAMP) ELSE NULL END`;
+        values.push(stateUpdate[1] === 'PAGADO');
+        assignments += `, pagado_en = CASE WHEN $${values.length} THEN COALESCE(pagado_en, CURRENT_TIMESTAMP) ELSE NULL END`;
       }
     }
     const maintenanceTimestamp = resource === 'maintenance' ? ', actualizado_en = CURRENT_TIMESTAMP' : '';

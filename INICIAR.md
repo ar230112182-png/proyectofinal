@@ -5,11 +5,13 @@ Para volver a entrar despues de cerrar VS Code, PostgreSQL o la terminal:
 1. Abre la carpeta del proyecto en el Explorador de archivos.
 2. Haz doble clic en `iniciar.bat`.
 3. Si Windows solicita permiso para iniciar PostgreSQL, acepta. Si no tienes permisos, pide al administrador que inicie el servicio `postgresql`.
-4. Espera a que aparezca el mensaje de que el servidor y PostgreSQL estan listos; se abrira `http://192.168.100.28:3007/`.
+4. Espera a que aparezca el mensaje de que el servidor y PostgreSQL estan listos; se abrira `http://localhost:3007/`.
 
 Deja abierta la ventana **Bienes y Raises - servidor** mientras uses la pagina. Al cerrar esa ventana se detiene el servidor; para volver a entrar, ejecuta `iniciar.bat` otra vez.
 
 El iniciador comprueba que exista `.env`, inicia los servicios instalados de PostgreSQL y espera a que la aplicacion confirme que puede conectarse a la base de datos. Si la pagina no abre, revisa el error que aparece en la ventana del servidor. Si faltan dependencias, abre una terminal en la carpeta del proyecto, ejecuta `npm install` y vuelve a iniciar.
+
+Si el iniciador avisa que el puerto 3007 tiene una version anterior, cierra la ventana donde se inicio `npm start` y ejecuta `iniciar.bat` de nuevo. El iniciador no detiene automaticamente procesos que ya esten usando el puerto.
 
 Tambien puedes iniciar el servidor manualmente desde una terminal abierta en la carpeta del proyecto con `npm start`. PostgreSQL debe estar iniciado y la terminal debe permanecer abierta mientras uses la pagina.
 
@@ -17,19 +19,21 @@ Tambien puedes iniciar el servidor manualmente desde una terminal abierta en la 
 
 El servidor escucha en la red local. Para entrar desde un telefono:
 
-1. Conecta el telefono y la computadora a la misma red Wi-Fi. No uses la red de invitados.
+1. Conecta el telefono y la computadora a la misma red Wi-Fi privada. No uses la red de invitados; algunas redes bloquean que los dispositivos se comuniquen entre sí.
 2. Ejecuta `iniciar.bat` y conserva abierta la ventana **Bienes y Raises - servidor**.
-3. En el mensaje final copia la direccion que aparece como `http://<IP>:3007/`, por ejemplo `http://192.168.29.82:3007/`.
-4. Escribe `http://192.168.100.28:3007/` en el navegador del telefono. El equipo servidor debe tener asignada la IP `192.168.100.28` y ambos dispositivos deben estar en la misma red.
-5. Si Windows muestra una alerta del Firewall, permite **Node.js** en redes privadas.
+3. En el mensaje final de `iniciar.bat` o de la ventana del servidor copia una de las direcciones mostradas como `http://<IP>:3007/`; usa la IPv4 de la red Wi-Fi a la que también está conectado el teléfono.
+4. Abre esa dirección en el navegador del teléfono e inicia sesión con una cuenta de la aplicación.
+5. Si Windows muestra una alerta del Firewall, permite **Node.js** en redes privadas. Si no aparece la alerta y no puedes conectar, abre PowerShell como administrador y ejecuta la regla de firewall de abajo.
 
-Si no aparece la IP, abre PowerShell y ejecuta `ipconfig`. Usa la direccion IPv4 del adaptador Wi-Fi, normalmente empieza por `192.168.` o `10.`. Si Windows bloquea la conexion, abre PowerShell como administrador y ejecuta:
+Si no aparece la IP, abre PowerShell y ejecuta `ipconfig`. Usa la dirección IPv4 del adaptador Wi-Fi, normalmente empieza por `192.168.` o `10.`. No es necesario asignar una IP fija al equipo: el iniciador muestra las direcciones IPv4 actuales. Si Windows bloquea la conexión, abre PowerShell como administrador y ejecuta:
 
 ```text
 New-NetFirewallRule -DisplayName "Bienes y Negocios Renato 3007" -Direction Inbound -Protocol TCP -LocalPort 3007 -Action Allow -Profile Private
 ```
 
-La computadora debe permanecer encendida, conectada al mismo Wi-Fi y con el servidor ejecutandose. La direccion puede cambiar al conectarte a otra red.
+La computadora debe permanecer encendida, conectada a la misma red y con el servidor ejecutándose. La dirección puede cambiar al conectarte a otra red. Varios dispositivos pueden usar el servidor al mismo tiempo; PostgreSQL tiene un máximo configurado de 10 conexiones y las solicitudes adicionales esperan a que una conexión quede disponible.
+
+Este acceso es únicamente para la red local; la dirección no funciona desde otra red Wi-Fi ni desde Internet. El inicio de sesión y los permisos de cada cuenta siguen siendo necesarios.
 
 ## Usuarios, clientes y contratos
 

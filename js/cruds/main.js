@@ -111,8 +111,15 @@ const records = {
   users: [], activity: [],
 };
 const reportDateFilter = { from: '', to: '' };
-const propertyFilters = { search: '', category: '' };
+const propertyFilters = { search: '', category: '', exactId: '' };
 const recordFilters = {};
+const matchingState = { page: 1, search: '', requestId: 0, filters: {}, generatedAt: null };
+const visitCalendarState = { mode: 'week', date: new Date() };
+const MATCHING_EMAIL_ACCOUNT = 'saul391302@gmail.com';
+const dashboardPropertyColumns = [
+  ['titulo', 'Propiedad'], ['categoria', 'Tipo'], ['estado_propiedad', 'Estado'],
+  ['precio', 'Precio'], ['agente', 'Responsable'],
+];
 
 // Relaciona cada recurso con su campo de fecha para ordenar y filtrar registros.
 const dateFieldByResource = {
@@ -134,28 +141,53 @@ const dateFieldByResource = {
 };
 
 const tableConfig = {
-  properties: { title: 'Propiedades registradas', columns: [['id_propiedad', 'ID'], ['titulo', 'Propiedad'], ['categoria', 'Categoría'], ['tipo_operacion', 'Operación'], ['precio', 'Precio'], ['estado_propiedad', 'Estado']], actions: ['edit', 'delete', 'map'] },
-  clients: { title: 'Clientes', columns: [['id_cliente', 'ID'], ['nombre', 'Nombre'], ['apellido_paterno', 'Apellido'], ['correo', 'Correo'], ['telefono', 'Teléfono'], ['ciudad', 'Ciudad'], ['activo', 'Estado'], ['fecha_registro', 'Fecha de registro']], actions: ['history', 'portal-access', 'status'] },
-  leads: { title: 'Clientes potenciales', columns: [['id_lead', 'ID'], ['nombre', 'Cliente potencial'], ['correo', 'Correo'], ['telefono', 'Teléfono'], ['origen', 'Origen'], ['estado', 'Estado'], ['creado_en', 'Fecha de registro']], actions: ['status'] },
-  visits: { title: 'Agenda de visitas', columns: [['id_cita', 'ID'], ['fecha_cita', 'Fecha'], ['cliente', 'Cliente'], ['propiedad', 'Propiedad'], ['agente', 'Agente'], ['estado', 'Estado']], actions: ['status'] },
-  matches: { title: 'Coincidencias guardadas', columns: [['id_coincidencia', 'ID'], ['lead', 'Cliente potencial'], ['propiedad', 'Propiedad'], ['puntuacion', 'Puntuación'], ['creada_en', 'Fecha']] },
-  documents: { title: 'Expedientes y resguardos', columns: [['id_documento', 'ID'], ['nombre_archivo', 'Documento'], ['tipo', 'Tipo'], ['estado', 'Estado'], ['tamano_bytes', 'Tamaño'], ['creado_en', 'Fecha']], actions: ['download'] },
-  offers: { title: 'Ofertas', columns: [['id_oferta', 'ID'], ['propiedad', 'Propiedad'], ['cliente', 'Usuario'], ['monto', 'Monto'], ['tipo', 'Tipo'], ['estado', 'Estado']], actions: ['status'] },
-  sales: { title: 'Ventas cerradas', columns: [['id_venta', 'ID'], ['propiedad', 'Propiedad'], ['cliente', 'Cliente'], ['precio_venta', 'Precio'], ['fecha_venta', 'Fecha']] },
-  commissions: { title: 'Comisiones', columns: [['id_comision', 'ID'], ['vendedor', 'Vendedor'], ['cliente', 'Cliente'], ['propiedad', 'Propiedad'], ['porcentaje_agencia', '% comisión'], ['monto_operacion', 'Valor propiedad'], ['monto_total', 'Comisión'], ['estado', 'Pago'], ['es_demo', 'Registro'], ['creado_en', 'Fecha']], actions: ['status'] },
-  rentals: { title: 'Contratos de renta', columns: [['id_renta', 'ID'], ['propiedad', 'Propiedad'], ['cliente', 'Cliente'], ['renta_mensual', 'Renta mensual'], ['fecha_inicio', 'Inicio'], ['fecha_fin', 'Fin'], ['estado', 'Estado']], actions: ['status'] },
-  payments: { title: 'Cobros de renta', columns: [['id_pago', 'ID'], ['propiedad', 'Propiedad'], ['cliente', 'Cliente'], ['periodo', 'Periodo'], ['monto', 'Monto'], ['estado', 'Estado'], ['pagado_en', 'Pagado']] , actions: ['status', 'receipt'] },
-  maintenance: { title: 'Solicitudes de mantenimiento', columns: [['id_solicitud', 'ID'], ['propiedad', 'Propiedad'], ['titulo', 'Solicitud'], ['descripcion', 'Descripción'], ['solicitante', 'Solicitante'], ['prioridad', 'Prioridad'], ['estado', 'Estado'], ['asignado', 'Responsable'], ['costo_estimado', 'Costo estimado'], ['costo_final', 'Costo final'], ['fecha_limite', 'Fecha límite']], actions: ['status'] },
-  contracts: { title: 'Contratos registrados', columns: [['id_contrato', 'ID'], ['tipo_operacion', 'Operación'], ['cliente', 'Cliente'], ['vendedor', 'Vendedor'], ['propiedad', 'Lote'], ['precio_total', 'Precio'], ['superficie_m2', 'Superficie m²'], ['fecha_contrato', 'Fecha']], actions: ['document', 'map'] },
-  sellers: { title: 'Vendedores', columns: [['id_usuario', 'ID'], ['nombre', 'Nombre'], ['apellido_paterno', 'Apellido'], ['correo', 'Correo'], ['telefono', 'Teléfono'], ['rol', 'Rol'], ['activo', 'Estado'], ['comision_mes', 'Comisión del mes']], actions: ['edit', 'status', 'delete'] },
-  users: { title: 'Usuarios y administradores', columns: [['id_usuario', 'ID'], ['nombre', 'Nombre'], ['apellido_paterno', 'Apellido'], ['correo', 'Correo'], ['telefono', 'Teléfono'], ['rol', 'Función'], ['activo', 'Estado'], ['fecha_registro', 'Fecha de registro']], actions: ['edit', 'status', 'delete'] },
-  reports: { title: 'Reportes de vendedores', columns: [['id', 'ID'], ['vendedor', 'Vendedor'], ['cobros', 'Monto'], ['operacion', 'Operación'], ['propiedad', 'Propiedad'], ['fecha', 'Fecha'], ['actividad', 'Actividad']], actions: ['report-pdf'] },
+  properties: { title: 'Propiedades registradas', columns: [['titulo', 'Propiedad'], ['categoria', 'Categoría'], ['tipo_operacion', 'Operación'], ['precio', 'Precio'], ['estado_propiedad', 'Estado']], actions: ['edit', 'delete', 'map'] },
+  clients: { title: 'Clientes', columns: [['nombre', 'Nombre'], ['apellido_paterno', 'Apellido'], ['correo', 'Correo'], ['telefono', 'Teléfono'], ['ciudad', 'Ciudad'], ['activo', 'Estado'], ['fecha_registro', 'Fecha de registro']], actions: ['history', 'portal-access', 'status'] },
+  leads: { title: 'Clientes potenciales', columns: [['nombre', 'Cliente potencial'], ['correo', 'Correo'], ['telefono', 'Teléfono'], ['origen', 'Origen'], ['estado', 'Estado'], ['creado_en', 'Fecha de registro']], actions: ['status'] },
+  visits: { title: 'Agenda de visitas', columns: [['fecha_cita', 'Fecha'], ['cliente', 'Cliente'], ['propiedad', 'Propiedad'], ['agente', 'Agente'], ['estado', 'Estado']], actions: ['status'] },
+  matches: { title: 'Coincidencias guardadas', columns: [['lead', 'Cliente potencial'], ['propiedad', 'Propiedad'], ['puntuacion', 'Puntuación'], ['creada_en', 'Fecha']] },
+  documents: { title: 'Expedientes y resguardos', columns: [['nombre_archivo', 'Documento'], ['tipo', 'Tipo'], ['estado', 'Estado'], ['tamano_bytes', 'Tamaño'], ['creado_en', 'Fecha']], actions: ['download'] },
+  offers: { title: 'Ofertas', columns: [['propiedad', 'Propiedad'], ['cliente', 'Usuario'], ['monto', 'Monto'], ['tipo', 'Tipo'], ['estado', 'Estado']], actions: ['status'] },
+  sales: { title: 'Ventas cerradas', columns: [['propiedad', 'Propiedad'], ['cliente', 'Cliente'], ['precio_venta', 'Precio'], ['fecha_venta', 'Fecha']] },
+  commissions: { title: 'Comisiones', columns: [['vendedor', 'Vendedor'], ['cliente', 'Cliente'], ['propiedad', 'Propiedad'], ['porcentaje_agencia', '% comisión'], ['monto_operacion', 'Valor propiedad'], ['monto_total', 'Comisión'], ['estado', 'Pago'], ['es_demo', 'Registro'], ['creado_en', 'Fecha']], actions: ['status'] },
+  rentals: { title: 'Contratos de renta', columns: [['propiedad', 'Propiedad'], ['cliente', 'Cliente'], ['renta_mensual', 'Renta mensual'], ['fecha_inicio', 'Inicio'], ['fecha_fin', 'Fin'], ['estado', 'Estado']], actions: ['status'] },
+  payments: { title: 'Cobros de renta', columns: [['propiedad', 'Propiedad'], ['cliente', 'Cliente'], ['periodo', 'Periodo'], ['monto', 'Monto'], ['estado', 'Estado'], ['pagado_en', 'Pagado']] , actions: ['status', 'receipt'] },
+  maintenance: { title: 'Solicitudes de mantenimiento', columns: [['propiedad', 'Propiedad'], ['titulo', 'Solicitud'], ['descripcion', 'Descripción'], ['solicitante', 'Solicitante'], ['prioridad', 'Prioridad'], ['estado', 'Estado'], ['asignado', 'Responsable'], ['costo_estimado', 'Costo estimado'], ['costo_final', 'Costo final'], ['fecha_limite', 'Fecha límite']], actions: ['status'] },
+  contracts: { title: 'Contratos registrados', columns: [['tipo_operacion', 'Operación'], ['cliente', 'Cliente'], ['vendedor', 'Vendedor'], ['propiedad', 'Lote'], ['precio_total', 'Precio'], ['superficie_m2', 'Superficie m²'], ['fecha_contrato', 'Fecha']], actions: ['document', 'map'] },
+  sellers: { title: 'Vendedores', columns: [['nombre', 'Nombre'], ['apellido_paterno', 'Apellido'], ['correo', 'Correo'], ['telefono', 'Teléfono'], ['rol', 'Rol'], ['activo', 'Estado'], ['comision_mes', 'Comisión del mes']], actions: ['edit', 'status', 'delete'] },
+  users: { title: 'Usuarios y administradores', columns: [['nombre', 'Nombre'], ['apellido_paterno', 'Apellido'], ['correo', 'Correo'], ['telefono', 'Teléfono'], ['rol', 'Función'], ['activo', 'Estado'], ['fecha_registro', 'Fecha de registro']], actions: ['edit', 'status', 'delete'] },
+  reports: { title: 'Reportes de vendedores', columns: [['vendedor', 'Vendedor'], ['cobros', 'Monto'], ['operacion', 'Operación'], ['propiedad', 'Propiedad'], ['fecha', 'Fecha'], ['actividad', 'Actividad']], actions: ['report-pdf'] },
 };
 let clientTableTab = 'todos';
-const clientColumns = {
-  clients: new Set(['id_cliente', 'nombre', 'correo', 'telefono', 'activo', 'fecha_registro']),
-  leads: new Set(['id_lead', 'nombre', 'correo', 'telefono', 'estado', 'creado_en']),
+let contractTableTab = 'contracts';
+let maintenancePriorityTab = 'todas';
+const tableColumns = {
+  clients: new Set(['nombre', 'correo', 'telefono', 'activo', 'fecha_registro']),
+  leads: new Set(['nombre', 'correo', 'telefono', 'estado', 'creado_en']),
 };
+
+function getTableColumns(resource, columns) {
+  if (!tableColumns[resource]) tableColumns[resource] = new Set(columns.map(([key]) => key));
+  return tableColumns[resource];
+}
+
+function syncTableColumnControls(scope, resource, columns) {
+  const visible = getTableColumns(resource, columns);
+  scope.querySelectorAll('[data-column-key]').forEach((cell) => {
+    cell.hidden = !visible.has(cell.dataset.columnKey);
+  });
+  scope.querySelectorAll('[data-table-column]').forEach((input) => {
+    input.checked = visible.has(input.dataset.tableColumn);
+  });
+}
+
+function setTableColumnVisibility(scope, resource, columns, key, isVisible) {
+  if (!columns.some(([columnKey]) => columnKey === key)) return;
+  const visible = getTableColumns(resource, columns);
+  if (isVisible) visible.add(key);
+  else visible.delete(key);
+  syncTableColumnControls(scope, resource, columns);
+}
 
 // Define los campos y recursos asociados a cada formulario del sistema.
 const forms = {
@@ -736,13 +768,46 @@ function syncClientTabs() {
   });
 }
 
+function syncContractTabs() {
+  const view = document.getElementById('contracts-view');
+  if (!view) return;
+  view.querySelectorAll('[data-contract-tab]').forEach((tab) => {
+    const selected = tab.dataset.contractTab === contractTableTab;
+    tab.setAttribute('aria-selected', String(selected));
+    tab.tabIndex = selected ? 0 : -1;
+  });
+  view.querySelectorAll('[data-contracts-tables] [data-record-panel]').forEach((panel) => {
+    const selected = panel.dataset.recordPanel === contractTableTab;
+    panel.hidden = !selected;
+    if (selected) panel.setAttribute('aria-labelledby', `contract-tab-${contractTableTab}`);
+  });
+}
+
+function syncMaintenanceTabs() {
+  const view = document.getElementById('maintenance-view');
+  if (!view) return;
+  const priorities = view.querySelectorAll('[data-maintenance-priority]');
+  priorities.forEach((tab) => {
+    const priority = tab.dataset.maintenancePriority;
+    const selected = priority === maintenancePriorityTab;
+    tab.setAttribute('aria-selected', String(selected));
+    tab.tabIndex = selected ? 0 : -1;
+    const count = priority === 'todas'
+      ? records.maintenance.length
+      : records.maintenance.filter((item) => String(item.prioridad || 'normal').toLowerCase() === priority).length;
+    const countLabel = tab.querySelector('[data-maintenance-count]');
+    if (countLabel) countLabel.textContent = String(count);
+  });
+  const panel = view.querySelector('[data-record-panel="maintenance"]');
+  if (panel) panel.setAttribute('aria-labelledby', `maintenance-tab-${maintenancePriorityTab}`);
+}
+
 // Renderiza tablas, filtros, acciones y contenido adicional de cada modulo.
 function renderRecords(resource, viewId, data = []) {
   const view = document.getElementById(viewId);
   const config = tableConfig[resource];
   if (!view || !config) return;
   const visibleData = resource === 'reports' ? filterReportsByDate(data) : data;
-  const filterState = recordFilters[resource] || (recordFilters[resource] = { search: '', from: '', to: '' });
   let panel = view.querySelector(`[data-record-panel="${resource}"]`);
   if (!panel) {
     panel = document.createElement('section');
@@ -753,9 +818,24 @@ function renderRecords(resource, viewId, data = []) {
       panel.id = `client-panel-${resource}`;
       panel.setAttribute('role', 'tabpanel');
       (view.querySelector('[data-clients-tables]') || view).append(panel);
+    } else if (viewId === 'contracts-view' && ['contracts', 'offers', 'sales', 'rentals'].includes(resource)) {
+      panel.tabIndex = -1;
+      panel.id = `contract-panel-${resource}`;
+      panel.setAttribute('role', 'tabpanel');
+      if (resource === 'rentals') panel.dataset.filterKey = 'contract-rentals';
+      (view.querySelector('[data-contracts-tables]') || view).append(panel);
+    } else if (resource === 'maintenance') {
+      panel.tabIndex = -1;
+      panel.id = 'maintenance-record-panel';
+      panel.setAttribute('role', 'tabpanel');
+      view.append(panel);
     } else view.append(panel);
   }
+  const filterKey = panel.dataset.filterKey || resource;
+  const filterState = recordFilters[filterKey] || (recordFilters[filterKey] = { search: '', from: '', to: '' });
   const isClientTable = resource === 'clients' || resource === 'leads';
+  const visibleColumns = getTableColumns(resource, config.columns);
+  panel.dataset.columnScope = resource;
   const filterOptions = {
     visits: ['Todas', 'Pendiente', 'Confirmada', 'Completada', 'Cancelada'],
     rentals: ['Todas', 'Activa', 'Finalizada', 'Cancelada'],
@@ -786,18 +866,18 @@ function renderRecords(resource, viewId, data = []) {
   const propertyCategory = resource === 'properties'
     ? `<label class="record-filter"><span>Categoría</span><select data-property-category><option value="">Todas</option>${propertyCategories.map((category) => `<option value="${escapeHtml(category)}"${propertyFilters.category === category ? ' selected' : ''}>${escapeHtml(category)}</option>`).join('')}</select></label>`
     : '';
-  const filter = filterOptions ? `<label class="record-filter"><span>Filtrar</span><select data-record-filter="${resource}">${filterOptions.map((option) => `<option value="${escapeHtml(option)}">${escapeHtml(option)}</option>`).join('')}</select></label>` : '';
+  const filter = filterOptions ? `<label class="record-filter"><span>Filtrar</span><select data-record-filter="${resource}">${filterOptions.map((option) => `<option value="${escapeHtml(option)}"${resource === 'rentals' && filterState.status === option ? ' selected' : ''}>${escapeHtml(option)}</option>`).join('')}</select></label>` : '';
   const propertyResultCount = resource === 'properties' ? ' data-property-result-count' : '';
   const resultLabel = resource === 'properties' ? 'propiedades' : 'registros';
   const reportExportPdf = resource === 'reports'
     ? `<button type="button" class="primary-button small-button" data-download-report-pdf title="Descargar reporte en PDF con diseño profesional y marca de agua">📄 Descargar PDF</button>`
     : '';
-  const columnControl = isClientTable ? `<details class="client-column-control"><summary>Columnas</summary><div>${config.columns.map(([key, label]) => `<label><input type="checkbox" data-client-column="${escapeHtml(key)}"${clientColumns[resource].has(key) ? ' checked' : ''}> ${escapeHtml(label)}</label>`).join('')}</div></details>` : '';
-  const columnAttributes = (key) => isClientTable ? ` data-column-key="${escapeHtml(key)}"${clientColumns[resource].has(key) ? '' : ' hidden'}` : '';
+  const columnControl = `<details class="table-column-control"><summary>Columnas</summary><div>${config.columns.map(([key, label]) => `<label><input type="checkbox" data-table-column="${escapeHtml(key)}" data-column-resource="${escapeHtml(resource)}"${visibleColumns.has(key) ? ' checked' : ''}> ${escapeHtml(label)}</label>`).join('')}</div></details>`;
+  const columnAttributes = (key) => ` data-column-key="${escapeHtml(key)}"${visibleColumns.has(key) ? '' : ' hidden'}`;
   const renderRow = (record) => {
     const actions = actionButtons(resource, record);
-    const actionCell = isClientTable ? `<details class="client-row-actions"><summary aria-label="Acciones del registro ${escapeHtml(record[resource === 'clients' ? 'id_cliente' : 'id_lead'])}">⋮</summary><div class="client-row-menu">${actions}</div></details>` : actions;
-    return `<tr data-record-text="${escapeHtml(getRecordSearchText(record))}" data-record-date="${escapeHtml(dateField ? record[dateField] : '')}"${resource === 'clients' ? ` data-record-active="${record.activo === true || record.activo === 'true'}"` : ''}${resource === 'reports' ? ` data-record-activity="${escapeHtml(record.actividad)}"` : ''}${resource === 'maintenance' ? ` data-priority="${escapeHtml(record.prioridad || 'normal')}" data-record-status="${escapeHtml(record.estado)}"` : ''}${resource === 'properties' ? ` data-property-title="${escapeHtml(record.titulo)}" data-property-id="${escapeHtml(record.id_propiedad)}" data-property-category="${escapeHtml(record.categoria)}"` : ''}>${config.columns.map(([key]) => `<td${columnAttributes(key)}>${formatCell(resource, key, record[key], record)}</td>`).join('')}<td>${actionCell}</td></tr>`;
+    const actionCell = isClientTable ? `<details class="client-row-actions"><summary aria-label="Acciones de ${resource === 'clients' ? 'cliente' : 'cliente potencial'}">⋮</summary><div class="client-row-menu">${actions}</div></details>` : actions;
+    return `<tr data-record-text="${escapeHtml(getRecordSearchText(record))}" data-record-date="${escapeHtml(dateField ? record[dateField] : '')}"${resource === 'clients' ? ` data-record-active="${record.activo === true || record.activo === 'true'}"` : ''}${resource === 'reports' ? ` data-record-activity="${escapeHtml(record.actividad)}"` : ''}${resource === 'maintenance' ? ` data-priority="${escapeHtml(record.prioridad || 'normal')}"` : ''}${['maintenance', 'rentals'].includes(resource) ? ` data-record-status="${escapeHtml(record.estado)}"` : ''}${resource === 'properties' ? ` data-property-title="${escapeHtml(record.titulo)}" data-property-id="${escapeHtml(record.id_propiedad)}" data-property-category="${escapeHtml(record.categoria)}"` : ''}>${config.columns.map(([key]) => `<td${columnAttributes(key)}>${formatCell(resource, key, record[key], record)}</td>`).join('')}<td>${actionCell}</td></tr>`;
   };
   const rows = resource === 'maintenance' && visibleData.length
     ? ['urgente', 'alta', 'normal', 'baja'].map((priority) => {
@@ -805,13 +885,18 @@ function renderRecords(resource, viewId, data = []) {
       return group.length ? `<tr class="maintenance-priority-heading" data-priority-heading="${priority}"><th colspan="${config.columns.length + 1}" scope="rowgroup">Prioridad ${priority}</th></tr>${group.map(renderRow).join('')}` : '';
     }).join('')
     : visibleData.map(renderRow).join('');
-  panel.innerHTML = `<div class="panel-heading"><div><h2>${config.title}</h2><p${propertyResultCount}>${visibleData.length} ${resultLabel}${resource === 'reports' && visibleData.length !== data.length ? ` de ${data.length}` : ''}</p></div><div class="panel-heading-actions">${recordSearch}${propertySearch}${propertyCategory}${dateFilter}${reportFilter}${filter}${columnControl}${reportExportPdf}</div></div><div class="property-table-wrap"><table class="data-table"><thead><tr>${config.columns.map(([key, label]) => `<th${columnAttributes(key)}>${label}</th>`).join('')}<th>Acciones</th></tr></thead><tbody>${visibleData.length ? rows : `<tr><td colspan="${config.columns.length + 1}" class="empty-records">No hay registros para mostrar.</td></tr>`}${isClientTable && visibleData.length ? `<tr data-client-empty hidden><td colspan="${config.columns.length + 1}" class="empty-records">No hay registros que coincidan con los filtros.</td></tr>` : ''}</tbody></table></div>`;
-  panel.querySelectorAll('select').forEach((select) => enableSelectSearch(select, select.closest('label').querySelector('span').textContent));
+  const rentalNote = viewId === 'contracts-view' && resource === 'rentals'
+    ? '<p>Rentas de cobranza; el indicador superior cuenta contratos de renta.</p>' : '';
+  panel.innerHTML = `<div class="panel-heading"><div><h2>${config.title}</h2><p${propertyResultCount}>${visibleData.length} ${resultLabel}${resource === 'reports' && visibleData.length !== data.length ? ` de ${data.length}` : ''}</p>${rentalNote}</div><div class="panel-heading-actions">${recordSearch}${propertySearch}${propertyCategory}${dateFilter}${reportFilter}${filter}${columnControl}${reportExportPdf}</div></div><div class="property-table-wrap"><table class="data-table"><thead><tr>${config.columns.map(([key, label]) => `<th${columnAttributes(key)}>${label}</th>`).join('')}<th>Acciones</th></tr></thead><tbody>${visibleData.length ? rows : `<tr><td colspan="${config.columns.length + 1}" class="empty-records">No hay registros para mostrar.</td></tr>`}${isClientTable && visibleData.length ? `<tr data-client-empty hidden><td colspan="${config.columns.length + 1}" class="empty-records">No hay registros que coincidan con los filtros.</td></tr>` : ''}</tbody></table></div>`;
+  syncTableColumnControls(panel, resource, config.columns);
+  panel.querySelectorAll('select:not([data-record-filter])').forEach((select) => enableSelectSearch(select, select.closest('label').querySelector('span').textContent));
   bindUserRecordActions(panel, resource);
   if (resource === 'properties') applyPropertyFilters(panel);
   if (resource !== 'properties') applyRecordFilters(panel, resource);
   if (isClientTable) syncClientTabs();
-  if (resource === 'visits') renderVisitCalendar(panel, data);
+  if (viewId === 'contracts-view') syncContractTabs();
+  if (resource === 'maintenance') syncMaintenanceTabs();
+  if (resource === 'visits') renderVisitCalendar(view.querySelector('[data-visit-calendar]'), data);
   updateMetrics();
 }
 
@@ -821,17 +906,18 @@ function getRecordSearchText(record) {
 }
 
 // Divide las filas visibles en paginas y conserva el numero por recurso.
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 6;
 const tablePages = {};
 
 // Recorta filas segun la pagina seleccionada y sincroniza los controles.
 function paginatePanel(panel, resource, resetPage = false) {
   if (!panel) return;
-  if (resetPage) tablePages[resource] = 1;
+  const pageKey = panel.dataset?.filterKey || resource;
+  if (resetPage) tablePages[pageKey] = 1;
   const rows = [...panel.querySelectorAll('tbody tr[data-record-text]')].filter((row) => !row.hidden);
   const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
-  const page = Math.min(Math.max(1, tablePages[resource] || 1), totalPages);
-  tablePages[resource] = page;
+  const page = Math.min(Math.max(1, tablePages[pageKey] || 1), totalPages);
+  tablePages[pageKey] = page;
   const start = (page - 1) * PAGE_SIZE;
   panel.querySelectorAll('tbody tr[data-record-text]').forEach((row) => { row.dataset.pageHidden = 'true'; });
   rows.slice(start, start + PAGE_SIZE).forEach((row) => { delete row.dataset.pageHidden; });
@@ -853,12 +939,15 @@ function paginatePanel(panel, resource, resetPage = false) {
 // Aplica texto, fechas y estado al conjunto de registros del modulo.
 function applyRecordFilters(panel, resource) {
   if (!panel) return;
-  const state = recordFilters[resource] || (recordFilters[resource] = { search: '', from: '', to: '' });
+  const filterKey = panel.dataset?.filterKey || resource;
+  const state = recordFilters[filterKey] || (recordFilters[filterKey] = { search: '', from: '', to: '' });
   const rows = [...panel.querySelectorAll('tbody tr[data-record-text]')];
   const query = state.search.trim().toLocaleLowerCase();
   const globalQuery = ['clients', 'leads'].includes(resource)
     ? (document.getElementById('global-search')?.value || '').trim().toLocaleLowerCase() : '';
-  const status = resource === 'maintenance' ? panel.querySelector('[data-record-filter="maintenance"]')?.value : '';
+  const status = resource === 'maintenance' ? panel.querySelector('[data-record-filter="maintenance"]')?.value
+    : resource === 'rentals' ? state.status : '';
+  const priority = resource === 'maintenance' ? maintenancePriorityTab : '';
   const activity = resource === 'reports' ? panel.querySelector('[data-record-filter="reports"]')?.value : '';
   const matches = rows.filter((row) => {
     const date = String(row.dataset.recordDate || '').slice(0, 10);
@@ -868,7 +957,8 @@ function applyRecordFilters(panel, resource) {
       && (!state.to || date <= state.to)
       && (resource !== 'clients' || clientTableTab !== 'activos' || row.dataset.recordActive === 'true')
       && (resource !== 'clients' || clientTableTab !== 'inactivos' || row.dataset.recordActive === 'false')
-      && (!status || status === 'Todas' || row.dataset.recordStatus === status);
+      && (!priority || priority === 'todas' || String(row.dataset.priority || 'normal').toLowerCase() === priority)
+      && (!status || status === 'Todas' || String(row.dataset.recordStatus).toLocaleLowerCase() === status.toLocaleLowerCase());
     const matchesActivity = !activity || activity === 'Todas' || row.dataset.recordActivity === activity;
     row.hidden = !(match && matchesActivity);
     return match && matchesActivity;
@@ -893,7 +983,8 @@ function applyPropertyFilters(panel) {
   const rows = [...panel.querySelectorAll('tbody tr[data-property-title]')];
   const matches = rows.filter((row) => {
     const date = String(row.dataset.recordDate || '').slice(0, 10);
-    const match = (!query || row.dataset.propertyTitle.toLocaleLowerCase().includes(query) || row.dataset.propertyId.includes(query))
+    const match = (!propertyFilters.exactId || row.dataset.propertyId === propertyFilters.exactId)
+      && (!query || row.dataset.propertyTitle.toLocaleLowerCase().includes(query) || row.dataset.propertyId.includes(query))
       && (!selectedCategory || row.dataset.propertyCategory.toLocaleLowerCase() === selectedCategory)
       && (!state.from || date >= state.from)
       && (!state.to || date <= state.to);
@@ -936,24 +1027,291 @@ function filterReportsByDate(data) {
   });
 }
 
-// Presenta las citas de la semana en una vista agrupada por dia.
+function explainMatch(explanation) {
+  const lines = [];
+  const city = explanation.ciudad;
+  if (city?.cumple !== null && city?.cumple !== undefined) {
+    lines.push(city.actual == null ? 'Ciudad: la propiedad no tiene datos.' : city.cumple
+      ? `Ciudad: coincide con ${city.esperado}.` : `Ciudad: se busca ${city.esperado}, la propiedad está en ${city.actual}.`);
+  }
+  const budget = explanation.presupuesto;
+  if (budget?.cumple !== null && budget?.cumple !== undefined) {
+    const range = [budget.minimo != null ? `desde ${formatMoney(budget.minimo)}` : '',
+      budget.maximo != null ? `hasta ${formatMoney(budget.maximo)}` : ''].filter(Boolean).join(' ');
+    lines.push(budget.actual == null ? `Presupuesto ${range}: la propiedad no tiene precio.`
+      : `Presupuesto ${range}: ${budget.cumple ? 'cumple' : 'no cumple'} (precio ${formatMoney(budget.actual)}).`);
+  }
+  const rooms = explanation.habitaciones;
+  if (rooms?.cumple !== null && rooms?.cumple !== undefined) {
+    lines.push(rooms.actual == null ? `Habitaciones: se requieren ${rooms.minimo}; no hay datos.`
+      : `Habitaciones: ${rooms.cumple ? 'cumple' : 'no cumple'} (se requieren ${rooms.minimo}, tiene ${rooms.actual}).`);
+  }
+  const category = explanation.categoria;
+  if (category?.cumple !== null && category?.cumple !== undefined) {
+    lines.push(category.actual == null ? `Categoría: se busca ${category.esperado}; no hay datos.`
+      : `Categoría: ${category.cumple ? 'cumple' : 'no cumple'} (se busca ${category.esperado}, es ${category.actual}).`);
+  }
+  return lines;
+}
+
+async function loadMatchPage(page = matchingState.page) {
+  const requestId = ++matchingState.requestId;
+  const search = matchingState.search;
+  const globalSearch = document.getElementById('global-search')?.value.trim() || '';
+  const params = new URLSearchParams({ page, limit: 3, search, global: globalSearch, ...matchingState.filters });
+  const result = await api.request(`/api/workflows/matching/results?${params}`);
+  if (requestId !== matchingState.requestId) return;
+  if (page > result.meta.totalPages) return loadMatchPage(result.meta.totalPages);
+  matchingState.page = page;
+  matchingState.generatedAt = result.meta.generadaEn;
+  records.matches = result.data;
+  const view = document.getElementById('matching-view');
+  view.querySelector('[data-match-total]').textContent = result.meta.total;
+  view.querySelector('[data-match-leads]').textContent = result.meta.prospectos;
+  view.querySelector('[data-match-average]').textContent = result.meta.promedio == null ? '—' : `${result.meta.promedio}%`;
+  view.querySelector('[data-match-generation]').textContent = result.meta.generadaEn
+    ? `Última generación: ${new Date(result.meta.generadaEn).toLocaleString('es-MX')} · Los cambios posteriores requieren generar nuevamente.`
+    : 'Aún no se han generado coincidencias con el cálculo actual.';
+  const container = view.querySelector('[data-match-results]');
+  container.innerHTML = result.data.length ? `<div class="matching-results">${result.data.map((match) => {
+    const lines = explainMatch(match.explicacion);
+    const phone = typeof match.telefono === 'string' && /^\+?[0-9() .-]{7,20}$/.test(match.telefono.trim())
+      ? `<span class="matching-phone">${escapeHtml(match.telefono.trim())}</span>` : '';
+    const email = typeof match.correo === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(match.correo.trim())
+      ? `<a class="text-button" href="${escapeHtml(matchingEmailUrl(match.correo.trim()))}" target="_blank" rel="noopener noreferrer">Enviar correo</a>` : '';
+    const available = !match.eliminado && String(match.estado_propiedad).toLowerCase() === 'disponible';
+    return `<article class="matching-result"><div class="matching-result-heading">
+      <h3>${escapeHtml(match.lead)} · ${escapeHtml(match.propiedad)}</h3>
+      <strong>${match.puntuacion == null ? 'Sin puntuación' : `${escapeHtml(match.puntuacion)}%`}</strong></div>
+      ${match.nueva ? '<span class="matching-badge">Nueva coincidencia</span>' : ''}
+      ${match.propiedad_nueva ? '<span class="matching-badge">Propiedad nueva en el motor</span>' : ''}
+      <span class="matching-badge">${match.contactado ? 'Contactado' : 'Pendiente de contacto'}</span>
+      ${lines.length ? `<ul class="matching-explanation">${lines.map((line) => `<li>${escapeHtml(line)}</li>`).join('')}</ul>`
+    : '<p class="matching-note">Sugerencia general: el prospecto no indicó preferencias puntuables.</p>'}
+      ${available ? '' : '<p class="matching-note">La propiedad ya no está disponible. Genera las coincidencias nuevamente.</p>'}
+      <div class="matching-actions"><button type="button" class="text-button" data-match-property="${escapeHtml(match.id_propiedad)}">Ver propiedad</button>
+      ${phone}${email}<button type="button" class="text-button" data-match-track="favorito" data-match-id="${escapeHtml(match.id_coincidencia)}" aria-pressed="${Boolean(match.favorito)}">${match.favorito ? 'Quitar favorito' : 'Marcar favorito'}</button>
+      <button type="button" class="text-button" data-match-track="contactado" data-match-id="${escapeHtml(match.id_coincidencia)}" aria-pressed="${Boolean(match.contactado)}">${match.contactado ? 'Marcar pendiente' : 'Marcar contactado'}</button>
+      <button type="button" class="text-button" data-match-share="whatsapp" data-match-id="${escapeHtml(match.id_coincidencia)}"${available ? '' : ' disabled'}>Compartir por WhatsApp</button>
+      <button type="button" class="text-button" data-match-share="correo" data-match-id="${escapeHtml(match.id_coincidencia)}"${available ? '' : ' disabled'}>Compartir por correo</button>
+      <button type="button" class="text-button" data-match-visit="${escapeHtml(match.id_coincidencia)}"${available ? '' : ' disabled'}>Agendar visita</button></div></article>`;
+  }).join('')}</div>` : '<p class="empty-records">No hay coincidencias para mostrar.</p>';
+  const nav = view.querySelector('[data-match-pagination]');
+  nav.hidden = result.meta.totalPages <= 1;
+  nav.innerHTML = `<button type="button" class="text-button" data-match-page="${page - 1}"${page <= 1 ? ' disabled' : ''}>Anterior</button>
+    <span>Página ${page} de ${result.meta.totalPages} · ${result.meta.total} resultados</span>
+    <button type="button" class="text-button" data-match-page="${page + 1}"${page >= result.meta.totalPages ? ' disabled' : ''}>Siguiente</button>`;
+}
+
+function matchingPhone(phone) {
+  const value = String(phone || '').trim();
+  if (!/^\+?[0-9() .-]{7,20}$/.test(value)) return null;
+  const digits = value.replace(/\D/g, '');
+  if (value.startsWith('+')) return digits.length >= 8 && digits.length <= 15 ? digits : null;
+  if (digits.length === 10) return `52${digits}`;
+  if (digits.length === 12 && digits.startsWith('52')) return digits;
+  return null;
+}
+
+function matchingEmailUrl(email, subject = '', body = '') {
+  const params = new URLSearchParams({
+    view: 'cm',
+    fs: '1',
+    to: email,
+    authuser: MATCHING_EMAIL_ACCOUNT,
+  });
+  if (subject) params.set('su', subject);
+  if (body) params.set('body', body);
+  return `https://mail.google.com/mail/?${params.toString()}`;
+}
+
+async function shareMatch(match, channel) {
+  const phone = matchingPhone(match.telefono);
+  const email = String(match.correo || '').trim();
+  if (channel === 'whatsapp' && !phone) return showToast('El teléfono no es válido para WhatsApp. Usa 10 dígitos o incluye el código de país con +.', true);
+  if (channel === 'correo' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return showToast('El prospecto no tiene un correo válido.', true);
+  const target = window.open('', '_blank');
+  if (!target) return showToast(channel === 'whatsapp'
+    ? 'Permite ventanas emergentes para abrir WhatsApp.'
+    : 'Permite ventanas emergentes para abrir Gmail.', true);
+  if (target) target.opener = null;
+  try {
+    const config = await api.request('/api/workflows/matching/config');
+    const operation = match.tipo_operacion === 'RENTA' ? 'Renta' : 'Venta';
+    const info = [match.propiedad, operation,
+      match.precio == null ? '' : formatMoney(match.precio), match.ciudad || ''].filter(Boolean).join(' · ');
+    const link = config.portalUrl ? `${config.portalUrl}?propiedad=${encodeURIComponent(match.id_propiedad)}` : '';
+    const message = `Hola, te comparto esta propiedad: ${info}.${link ? `\n${link}` : ''}`;
+    if (channel === 'whatsapp') target.location.href = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+    else target.location.href = matchingEmailUrl(email, 'Propiedad de interés', message);
+    if (!link) showToast('Mensaje preparado sin enlace: no hay una dirección pública configurada.');
+  } catch (error) {
+    if (target) target.close();
+    showToast(`No se pudo preparar el mensaje: ${error.message}`, true);
+  }
+}
+
+async function loadMatchingExtra(kind, page = 1) {
+  const details = document.querySelector(`[data-match-extra="${kind}"]`);
+  const content = details.querySelector('[data-match-extra-content]');
+  content.textContent = 'Cargando...';
+  let result;
+  try {
+    result = await api.request(`/api/workflows/matching/${kind}?page=${page}&limit=6`);
+  } catch (error) {
+    content.textContent = 'No se pudieron cargar los datos.';
+    throw error;
+  }
+  const rows = result.data.map((item) => {
+    const demoBadge = item.es_demo ? '<span class="matching-badge">DEMO</span> ' : '';
+    if (kind === 'history') return `<li>${demoBadge}${escapeHtml(formatAlertDate(item.generada_en))} · ${escapeHtml(item.usuario || 'Usuario no disponible')} · ${escapeHtml(item.total)} resultados: ${escapeHtml(item.nuevos)} nuevos, ${escapeHtml(item.modificados)} modificados, ${escapeHtml(item.retirados)} retirados; ${escapeHtml(item.propiedades_nuevas)} propiedades nuevas y ${escapeHtml(item.propiedades_no_disponibles)} no disponibles.</li>`;
+    if (kind === 'changes') {
+      const state = item.eliminado ? 'Eliminada' : item.estado_propiedad || 'Estado no registrado';
+      const price = item.precio == null ? 'Sin precio registrado' : formatMoney(item.precio);
+      return `<li>${demoBadge}<strong>${escapeHtml(item.propiedad)}</strong> · ID ${escapeHtml(item.id_propiedad)} · Estado: ${escapeHtml(state)} · Precio: ${escapeHtml(price)} · Operación: ${escapeHtml(item.tipo_operacion || 'Operación no registrada')} · Ubicación: ${escapeHtml(item.ubicacion || 'Ubicación no registrada')}.</li>`;
+    }
+    return `<li>${demoBadge}${escapeHtml(item.lead)} · ${escapeHtml(item.propiedad)} · ${item.no_disponible ? 'Propiedad no disponible' : item.estado_propiedad == null ? 'Disponibilidad no registrada' : 'Ya no cumple las condiciones'} · ${item.favorito ? 'Favorito' : 'Sin favorito'} · ${item.contactado ? 'Contactado' : 'Pendiente'}
+      <button type="button" class="text-button" data-retired-track="favorito" data-lead-id="${escapeHtml(item.id_lead)}" data-property-id="${escapeHtml(item.id_propiedad)}" data-value="${!item.favorito}">${item.favorito ? 'Quitar favorito' : 'Marcar favorito'}</button>
+      <button type="button" class="text-button" data-retired-track="contactado" data-lead-id="${escapeHtml(item.id_lead)}" data-property-id="${escapeHtml(item.id_propiedad)}" data-value="${!item.contactado}">${item.contactado ? 'Marcar pendiente' : 'Marcar contactado'}</button></li>`;
+  });
+  const emptyMessages = {
+    changes: matchingState.generatedAt
+      ? 'La última generación no registró propiedades que dejaran de estar disponibles.'
+      : 'Genera coincidencias para iniciar el seguimiento de disponibilidad; los cambios aparecerán aquí.',
+    retired: 'Aún no hay coincidencias retiradas en tu seguimiento. Marca una como favorita o contactada y vuelve a generar coincidencias para consultarla aquí.',
+    history: 'Aún no hay generaciones registradas. Usa “Generar coincidencias” para crear la primera.',
+  };
+  content.innerHTML = rows.length ? `<ul>${rows.join('')}</ul>` : `<p class="matching-note">${emptyMessages[kind] || 'No hay registros para mostrar.'}</p>`;
+  if (result.meta.totalPages > 1) content.insertAdjacentHTML('beforeend', `<nav class="table-pagination" aria-label="Paginación"><button type="button" class="text-button" data-match-extra-page="${page - 1}" data-match-extra-kind="${kind}"${page <= 1 ? ' disabled' : ''}>Anterior</button><span>Página ${page} de ${result.meta.totalPages}</span><button type="button" class="text-button" data-match-extra-page="${page + 1}" data-match-extra-kind="${kind}"${page >= result.meta.totalPages ? ' disabled' : ''}>Siguiente</button></nav>`);
+}
+
+async function runMatchingGeneration(button) {
+  const status = document.querySelector('[data-match-generation]');
+  const label = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Generando coincidencias...';
+  button.setAttribute('aria-busy', 'true');
+  status.textContent = 'Generando coincidencias. Esto puede tardar según la cantidad de registros.';
+  try {
+    try {
+      await api.request('/api/workflows/matching/run', { method: 'POST' });
+    } catch (error) {
+      status.textContent = 'No se pudo confirmar la generación. Inténtalo nuevamente.';
+      showToast(`No se pudo generar coincidencias: ${error.message}`, true);
+      return;
+    }
+    try {
+      await loadMatchPage(1);
+      showToast('Coincidencias actualizadas.');
+      document.querySelectorAll('[data-match-extra][open]').forEach((details) => {
+        loadMatchingExtra(details.dataset.matchExtra).catch((error) => showToast(`No se pudo actualizar el historial: ${error.message}`, true));
+      });
+      loadNotifications().catch((error) => console.error('No se pudieron actualizar las notificaciones:', error));
+    } catch (error) {
+      status.textContent = 'Se generaron las coincidencias, pero no se pudieron cargar los resultados.';
+      showToast(`Coincidencias generadas, pero no se pudieron cargar: ${error.message}`, true);
+    }
+  } finally {
+    button.disabled = false;
+    button.textContent = label;
+    button.removeAttribute('aria-busy');
+  }
+}
+
+function openMatchVisit(match) {
+  const property = optionData.properties.find((item) => String(item.id) === String(match.id_propiedad));
+  if (!property) {
+    showToast('La propiedad ya no está disponible para agendar. Actualiza los datos.', true);
+    return;
+  }
+  const email = String(match.correo || '').trim().toLowerCase();
+  const clients = email ? records.clients.filter((client) => String(client.correo || '').trim().toLowerCase() === email) : [];
+  if (clients.length !== 1) {
+    showToast('Se requiere un único cliente registrado con el correo del prospecto antes de agendar.', true);
+    return;
+  }
+  const client = clients[0];
+  if (!window.confirm(`¿Agendar para el cliente registrado ${[client.nombre, client.apellido_paterno, client.apellido_materno].filter(Boolean).join(' ')} (${client.correo})?`)) return;
+  openForm('visit');
+  const form = document.getElementById('workflow-form');
+  for (const [name, value] of [['id_propiedad', String(match.id_propiedad)], ['id_cliente', String(client.id_cliente)]]) {
+    const select = form.querySelector(`[name="${name}"]`);
+    select.value = value;
+    select.disabled = true;
+    select.setAttribute('aria-disabled', 'true');
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    const hidden = document.createElement('input');
+    hidden.type = 'hidden';
+    hidden.name = name;
+    hidden.value = value;
+    select.closest('.workflow-field').append(hidden);
+  }
+}
+
+function moveVisitCalendar(amount) {
+  const date = visitCalendarState.date;
+  visitCalendarState.date = visitCalendarState.mode === 'month'
+    ? new Date(date.getFullYear(), date.getMonth() + amount, 1, 12)
+    : new Date(date.getFullYear(), date.getMonth(), date.getDate() + amount * 7, 12);
+}
+
+// Presenta las citas agrupadas por dia en el periodo seleccionado.
 function renderVisitCalendar(panel, visits) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const days = Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(today);
-    date.setDate(today.getDate() + index);
-    const key = date.toISOString().slice(0, 10);
-    const dayVisits = visits.filter((visit) => String(visit.fecha_cita).slice(0, 10) === key);
-    return `<article class="visit-day"><header><strong>${date.toLocaleDateString('es-MX', { weekday: 'short' })}</strong><span>${date.getDate()}</span></header>${dayVisits.length ? dayVisits.map((visit) => `<div class="visit-event"><time>${new Date(visit.fecha_cita).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}</time><strong>${escapeHtml(visit.propiedad)}</strong><small>${escapeHtml(visit.cliente)} · ${escapeHtml(visit.estado)}</small></div>`).join('') : '<p class="empty-calendar">Sin visitas</p>'}</article>`;
+  if (!panel) return;
+  const monthly = visitCalendarState.mode === 'month';
+  const selected = visitCalendarState.date;
+  const first = new Date(selected.getFullYear(), selected.getMonth(), monthly ? 1 : selected.getDate(), 12);
+  const offset = monthly ? (first.getDay() + 6) % 7 : 0;
+  const dayCount = monthly ? new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate() : 7;
+  const slots = monthly ? Math.ceil((offset + dayCount) / 7) * 7 : 7;
+  const visitsByDay = new Map();
+  visits.forEach((visit) => {
+    const date = new Date(visit.fecha_cita);
+    if (Number.isNaN(date.getTime())) return;
+    const key = localDateKey(date);
+    if (!visitsByDay.has(key)) visitsByDay.set(key, []);
+    visitsByDay.get(key).push(visit);
+  });
+  const days = Array.from({ length: slots }, (_, index) => {
+    const day = index - offset + 1;
+    if (day < 1 || day > dayCount) return '<div class="visit-calendar-blank" aria-hidden="true"></div>';
+    const date = new Date(first.getFullYear(), first.getMonth(), first.getDate() + day - 1, 12);
+    const dayVisits = visitsByDay.get(localDateKey(date)) || [];
+    const dateLabel = date.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    const events = dayVisits.map((visit) => `<div class="visit-event"><time>${new Date(visit.fecha_cita).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}</time><strong>${escapeHtml(visit.propiedad)}</strong><small>${escapeHtml(visit.cliente)} · ${escapeHtml(visit.estado)}</small></div>`).join('');
+    return `<article class="visit-day" aria-label="${escapeHtml(dateLabel)}"${dayVisits.length ? ' tabindex="0"' : ''}><header>${monthly ? '' : `<strong>${date.toLocaleDateString('es-MX', { weekday: 'short' })}</strong>`}<span>${date.getDate()}</span></header>${events || (monthly ? '' : '<p class="empty-calendar">Sin visitas</p>')}</article>`;
   }).join('');
-  panel.insertAdjacentHTML('beforeend', `<div class="calendar-heading"><h3>Calendario de visitas</h3><span>Próximos 7 días</span></div><div class="visit-calendar">${days}</div>`);
+  const end = new Date(first.getFullYear(), first.getMonth(), first.getDate() + 6, 12);
+  const period = monthly ? first.toLocaleDateString('es-MX', { month: 'long', year: 'numeric' })
+    : `${first.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })} – ${end.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+  const weekdays = monthly ? ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((day) => `<div class="calendar-weekday">${day}</div>`).join('') : '';
+  panel.innerHTML = `<div class="calendar-heading"><h2>Calendario de visitas</h2>
+    <div class="calendar-controls" aria-label="Controles del calendario">
+      <div class="calendar-view-switch" role="group" aria-label="Vista del calendario">
+        <button type="button" class="outline-button small-button" data-calendar-mode="week" aria-pressed="${!monthly}">Semana</button>
+        <button type="button" class="outline-button small-button" data-calendar-mode="month" aria-pressed="${monthly}">Mes</button>
+      </div>
+      <div class="calendar-navigation">
+        <button type="button" class="outline-button small-button" data-calendar-move="-1" aria-label="${monthly ? 'Mes' : 'Semana'} anterior">←</button>
+        <button type="button" class="outline-button small-button" data-calendar-today>Hoy</button>
+        <button type="button" class="outline-button small-button" data-calendar-move="1" aria-label="${monthly ? 'Mes' : 'Semana'} siguiente">→</button>
+      </div>
+    </div></div>
+    <p class="calendar-period" aria-live="polite">${escapeHtml(period)}</p>
+    <div class="visit-calendar${monthly ? ' visit-calendar-month' : ''}">${weekdays}${days}</div>`;
 }
 
 // Filtra filas con el control desplegable del modulo activo.
 function applyRecordFilter(select) {
   const value = select.value.toLocaleLowerCase();
   const panel = select.closest('.persisted-panel');
+  if (panel?.dataset.recordPanel === 'rentals') {
+    const filterKey = panel.dataset.filterKey || 'rentals';
+    const state = recordFilters[filterKey] || (recordFilters[filterKey] = { search: '', from: '', to: '' });
+    state.status = select.value;
+    applyRecordFilters(panel, 'rentals');
+    return;
+  }
   if (panel && ['maintenance', 'reports'].includes(panel.dataset.recordPanel)) {
     applyRecordFilters(panel, panel.dataset.recordPanel);
     return;
@@ -1032,14 +1390,17 @@ function configureContractForm(form) {
 
 // Dibuja las propiedades recientes que aparecen en el panel principal.
 function renderDashboardProperties(properties) {
+  const table = document.querySelector('#property-table');
   const body = document.querySelector('#property-table tbody');
   if (!body) return;
   body.innerHTML = properties.slice(0, 5).map((property) => `
-    <tr><td>${escapeHtml(property.id_propiedad)}</td><td><div class="property-name"><div class="property-photo photo-one"></div><span><strong>${escapeHtml(property.titulo)}</strong><small>${escapeHtml(property.direccion)}</small></span></div></td>
-      <td>${escapeHtml(property.categoria)}</td><td><span class="status status-green">${escapeHtml(property.estado_propiedad)}</span></td>
-      <td><strong>${escapeHtml(formatMoney(property.precio))}</strong></td><td>${escapeHtml(property.agente || 'Sin asignar')}</td>
+    <tr><td data-column-key="titulo"><div class="property-name"><div class="property-photo photo-one"></div><span><strong>${escapeHtml(property.titulo)}</strong><small>${escapeHtml(property.direccion)}</small></span></div></td>
+      <td data-column-key="categoria">${escapeHtml(property.categoria)}</td><td data-column-key="estado_propiedad"><span class="status status-green">${escapeHtml(property.estado_propiedad)}</span></td>
+      <td data-column-key="precio"><strong>${escapeHtml(formatMoney(property.precio))}</strong></td><td data-column-key="agente">${escapeHtml(property.agente || 'Sin asignar')}</td>
       <td><button class="row-menu" type="button" aria-label="Acciones de propiedad" data-record-action="edit" data-resource="properties" data-record-id="${property.id_propiedad}">•••</button></td></tr>
-  `).join('') || '<tr><td colspan="7" class="empty-records">Todavía no hay propiedades registradas.</td></tr>';
+  `).join('') || '<tr><td colspan="6" class="empty-records">Todavía no hay propiedades registradas.</td></tr>';
+  const scope = table?.closest?.('[data-column-scope]');
+  if (scope) syncTableColumnControls(scope, 'dashboard-properties', dashboardPropertyColumns);
 }
 
 let lastSummaryData = null;
@@ -1091,12 +1452,6 @@ function updateMetrics(summary = lastSummaryData) {
       ['Nuevos clientes potenciales', countStatus(records.leads, 'estado', ['nuevo'])],
       ['Clientes potenciales activos', records.leads.filter((lead) => !['convertido', 'descartado', 'cerrado', 'perdido'].includes(String(lead.estado).toLowerCase())).length],
       ['Conversión', conversionRate],
-    ],
-    'matching-view': [
-      ['Coincidencias guardadas', records.matches.length],
-      ['Clientes potenciales evaluados', new Set(records.matches.map((item) => String(item.id_lead))).size],
-      ['Puntuación promedio', `${records.matches.length ? Math.round(records.matches.reduce((sum, item) => sum + Number(item.puntuacion), 0) / records.matches.length) : 0}%`],
-      ['Clientes potenciales', records.leads.length],
     ],
     'visits-view': [
       ['Visitas registradas', records.visits.length],
@@ -1328,7 +1683,7 @@ async function loadWorkspace() {
     const currentUserForLoad = JSON.parse(localStorage.getItem('habita_user') || '{}');
     const roleForLoad = String(currentUserForLoad.rol || currentUserForLoad.role || '').toLowerCase();
     const adminForLoad = ['administrador', 'admin'].includes(roleForLoad);
-    const resourcesToLoad = Object.keys(tableConfig).filter((resource) => resource !== 'properties'
+    const resourcesToLoad = Object.keys(tableConfig).filter((resource) => resource !== 'properties' && resource !== 'matches'
       && (resource !== 'users' || adminForLoad)
       && (resource !== 'sellers' || adminForLoad)
       && (resource !== 'commissions' || adminForLoad));
@@ -1369,7 +1724,7 @@ async function loadWorkspace() {
     if (!isAdmin) records.sellers = [];
     if (!isAdmin) records.commissions = [];
     const resourceViews = {
-      clients: 'clients-view', leads: 'clients-view', visits: 'visits-view', matches: 'matching-view',
+      clients: 'clients-view', leads: 'clients-view', visits: 'visits-view',
       documents: 'legal-view', offers: 'contracts-view', sales: 'contracts-view',
       commissions: 'finance-view', rentals: 'rents-view', payments: 'rents-view',
       maintenance: 'maintenance-view', contracts: 'contracts-view', reports: 'reports-view',
@@ -1378,6 +1733,7 @@ async function loadWorkspace() {
     const renderResource = (resource) => {
       if (resourceViews[resource] && (isAdmin || !['users', 'sellers', 'commissions'].includes(resource))) {
         renderRecords(resource, resourceViews[resource], records[resource]);
+        if (resource === 'rentals') renderRecords(resource, 'contracts-view', records[resource]);
       }
     };
     const summaryData = summaryResult.value.data;
@@ -1395,6 +1751,12 @@ async function loadWorkspace() {
       }
       renderResource(resource);
     }));
+    try {
+      await loadMatchPage();
+    } catch (error) {
+      document.querySelector('[data-match-generation]').textContent = 'No se pudieron cargar las coincidencias.';
+      showToast(`No se pudieron cargar las coincidencias: ${error.message}`, true);
+    }
     try {
       records.activity = (await activityRequest).data;
     } catch (error) {
@@ -1455,12 +1817,15 @@ function renderCollectionsOverview() {
   if (!container) return;
   const today = new Date();
   const todayKey = localDateKey(today);
-  const inDays = (days) => {
+  const dateAtOffset = (days) => {
     const date = new Date(today);
     date.setDate(date.getDate() + days);
-    return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'),
-      String(date.getDate()).padStart(2, '0')].join('-');
+    return localDateKey(date);
   };
+  const paymentWindowStart = dateAtOffset(-10);
+  const paymentWindowEnd = dateAtOffset(10);
+  const renewalWindowStart = dateAtOffset(-15);
+  const renewalWindowEnd = dateAtOffset(10);
   const openPayments = records.payments.filter((payment) => (
     ['PENDIENTE', 'VENCIDO'].includes(String(payment.estado).toUpperCase())
   ));
@@ -1470,20 +1835,21 @@ function renderCollectionsOverview() {
   ));
   const upcomingPayments = openPayments.filter((payment) => {
     const due = String(payment.periodo).slice(0, 10);
-    return String(payment.estado).toUpperCase() === 'PENDIENTE'
-      && due > todayKey && due <= inDays(30);
-  });
+    return due >= paymentWindowStart && due <= paymentWindowEnd;
+  }).sort((a, b) => String(a.periodo).localeCompare(String(b.periodo))
+    || Number(b.id_pago || 0) - Number(a.id_pago || 0));
   const expiringRentals = records.rentals.filter((rental) => {
     const end = String(rental.fecha_fin || '').slice(0, 10);
-    return String(rental.estado).toLowerCase() === 'activa'
-      && end >= todayKey && end <= inDays(60);
-  });
+    return ['activa', 'cancelada'].includes(String(rental.estado).toLowerCase())
+      && end >= renewalWindowStart && end <= renewalWindowEnd;
+  }).sort((a, b) => String(a.fecha_fin).localeCompare(String(b.fecha_fin))
+    || Number(a.id_renta || 0) - Number(b.id_renta || 0));
   const paymentItem = (payment) => `<li><div><strong>${escapeHtml(payment.cliente)}</strong>
-    <span>${escapeHtml(payment.propiedad)} · ${escapeHtml(formatAlertDate(payment.periodo))}</span></div>
+    <span>${escapeHtml(payment.propiedad)} · ${escapeHtml(formatAlertDate(payment.periodo))} · ${escapeHtml(payment.estado)}</span></div>
     <strong>${escapeHtml(formatMoney(payment.monto))}</strong>
     <button type="button" class="text-button" data-record-action="status" data-resource="payments" data-record-id="${escapeHtml(payment.id_pago)}">Actualizar</button></li>`;
   const rentalItem = (rental) => `<li><div><strong>${escapeHtml(rental.cliente)}</strong>
-    <span>${escapeHtml(rental.propiedad)} · Vence ${escapeHtml(formatAlertDate(rental.fecha_fin))}</span></div>
+    <span>${escapeHtml(rental.propiedad)} · ${String(rental.fecha_fin).slice(0, 10) < todayKey ? 'Terminó' : 'Vence'} ${escapeHtml(formatAlertDate(rental.fecha_fin))} · ${escapeHtml(rental.estado)}</span></div>
     <strong>${escapeHtml(formatMoney(rental.renta_mensual))} / mes</strong></li>`;
   container.innerHTML = `
     <div class="collection-alert-grid">
@@ -1491,10 +1857,10 @@ function renderCollectionsOverview() {
         <ul>${overduePayments.length ? overduePayments.slice(0, 5).map(paymentItem).join('') : '<li class="collection-empty">No hay adeudos vencidos.</li>'}</ul>
       </section>
       <section class="collection-alert-card"><div class="collection-alert-heading"><h3>Próximos cobros</h3><span>${upcomingPayments.length}</span></div>
-        <ul>${upcomingPayments.length ? upcomingPayments.slice(0, 5).map(paymentItem).join('') : '<li class="collection-empty">No hay cobros próximos en los siguientes 30 días.</li>'}</ul>
+        <ul>${upcomingPayments.length ? upcomingPayments.slice(0, 5).map(paymentItem).join('') : '<li class="collection-empty">No hay cobros pendientes o vencidos dentro de la ventana de 10 días.</li>'}</ul>
       </section>
       <section class="collection-alert-card"><div class="collection-alert-heading"><h3>Renovaciones por atender</h3><span>${expiringRentals.length}</span></div>
-        <ul>${expiringRentals.length ? expiringRentals.slice(0, 5).map(rentalItem).join('') : '<li class="collection-empty">No hay contratos por vencer en los siguientes 60 días.</li>'}</ul>
+        <ul>${expiringRentals.length ? expiringRentals.slice(0, 5).map(rentalItem).join('') : '<li class="collection-empty">No hay contratos activos o cancelados en la ventana de renovaciones.</li>'}</ul>
       </section>
     </div>`;
 }
@@ -2427,6 +2793,107 @@ loginForm?.addEventListener('submit', async (event) => {
 });
 
 document.addEventListener('click', async (event) => {
+  const calendarControl = event.target.closest('[data-calendar-mode], [data-calendar-move], [data-calendar-today]');
+  if (calendarControl) {
+    let selector;
+    if (calendarControl.hasAttribute('data-calendar-mode')) {
+      visitCalendarState.mode = calendarControl.dataset.calendarMode;
+      selector = `[data-calendar-mode="${visitCalendarState.mode}"]`;
+    } else if (calendarControl.hasAttribute('data-calendar-move')) {
+      const direction = Number(calendarControl.dataset.calendarMove);
+      moveVisitCalendar(direction);
+      selector = `[data-calendar-move="${direction}"]`;
+    } else {
+      visitCalendarState.date = new Date();
+      selector = '[data-calendar-today]';
+    }
+    const panel = calendarControl.closest('[data-visit-calendar]');
+    renderVisitCalendar(panel, records.visits);
+    panel.querySelector(selector)?.focus();
+    return;
+  }
+  const generateMatches = event.target.closest('[data-generate-matches]');
+  if (generateMatches) {
+    await runMatchingGeneration(generateMatches);
+    return;
+  }
+  const clearMatchFilters = event.target.closest('[data-match-clear]');
+  if (clearMatchFilters) {
+    clearMatchFilters.closest('form').reset();
+    matchingState.filters = {};
+    try { await loadMatchPage(1); } catch (error) { showToast(`No se pudieron cargar las coincidencias: ${error.message}`, true); }
+    return;
+  }
+  const extraPage = event.target.closest('[data-match-extra-page]');
+  if (extraPage) {
+    try { await loadMatchingExtra(extraPage.dataset.matchExtraKind, Number(extraPage.dataset.matchExtraPage)); }
+    catch (error) { showToast(`No se pudo cargar el historial: ${error.message}`, true); }
+    return;
+  }
+  const retiredTrack = event.target.closest('[data-retired-track]');
+  if (retiredTrack) {
+    retiredTrack.disabled = true;
+    try {
+      await api.request(`/api/workflows/matching/tracking/${encodeURIComponent(retiredTrack.dataset.leadId)}/${encodeURIComponent(retiredTrack.dataset.propertyId)}`, {
+        method: 'PATCH', body: JSON.stringify({ [retiredTrack.dataset.retiredTrack]: retiredTrack.dataset.value === 'true' }),
+      });
+      await loadMatchingExtra('retired');
+    } catch (error) { showToast(`No se pudo actualizar el seguimiento: ${error.message}`, true); retiredTrack.disabled = false; }
+    return;
+  }
+  const matchAction = event.target.closest('[data-match-track], [data-match-share]');
+  if (matchAction) {
+    const match = records.matches.find((item) => String(item.id_coincidencia) === matchAction.dataset.matchId);
+    if (!match) { showToast('La coincidencia ya no está disponible. Actualiza los resultados.', true); return; }
+    if (matchAction.dataset.matchShare) { await shareMatch(match, matchAction.dataset.matchShare); return; }
+    matchAction.disabled = true;
+    try {
+      const field = matchAction.dataset.matchTrack;
+      await api.request(`/api/workflows/matching/tracking/${encodeURIComponent(match.id_lead)}/${encodeURIComponent(match.id_propiedad)}`, {
+        method: 'PATCH', body: JSON.stringify({ [field]: !match[field] }),
+      });
+      await loadMatchPage();
+    } catch (error) { showToast(`No se pudo actualizar el seguimiento: ${error.message}`, true); matchAction.disabled = false; }
+    return;
+  }
+  const matchPage = event.target.closest('[data-match-page]');
+  if (matchPage) {
+    try { await loadMatchPage(Number(matchPage.dataset.matchPage)); }
+    catch (error) { showToast(`No se pudieron cargar las coincidencias: ${error.message}`, true); }
+    return;
+  }
+  const matchProperty = event.target.closest('[data-match-property]');
+  if (matchProperty) {
+    const panel = document.querySelector('#properties-view [data-record-panel="properties"]');
+    const search = panel?.querySelector('[data-property-search]');
+    if (!search) {
+      showToast('El inventario aún no está disponible.', true);
+      return;
+    }
+    search.value = matchProperty.dataset.matchProperty;
+    propertyFilters.exactId = matchProperty.dataset.matchProperty;
+    const category = panel.querySelector('[data-property-category]');
+    if (category) {
+      category.value = '';
+      category.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    const dateState = recordFilters.properties;
+    if (dateState) {
+      dateState.from = '';
+      dateState.to = '';
+      panel.querySelectorAll('[data-record-date]').forEach((input) => { input.value = ''; });
+    }
+    applyPropertyFilters(panel);
+    document.querySelector('.nav-item[data-view="properties"]')?.click();
+    return;
+  }
+  const matchVisit = event.target.closest('[data-match-visit]');
+  if (matchVisit) {
+    const match = records.matches.find((item) => String(item.id_coincidencia) === matchVisit.dataset.matchVisit);
+    if (match) openMatchVisit(match);
+    else showToast('La coincidencia ya no está disponible. Actualiza los resultados.', true);
+    return;
+  }
   const filter = event.target.closest('[data-record-filter]');
   if (filter) return;
   document.querySelectorAll('.client-row-actions[open]').forEach((menu) => {
@@ -2438,6 +2905,20 @@ document.addEventListener('click', async (event) => {
     syncClientTabs();
     const panel = document.querySelector('#clients-view [data-record-panel="clients"]');
     if (panel) applyRecordFilters(panel, 'clients');
+    return;
+  }
+  const contractTab = event.target.closest('[data-contract-tab]');
+  if (contractTab) {
+    contractTableTab = contractTab.dataset.contractTab;
+    syncContractTabs();
+    return;
+  }
+  const priorityTab = event.target.closest('[data-maintenance-priority]');
+  if (priorityTab) {
+    maintenancePriorityTab = priorityTab.dataset.maintenancePriority;
+    syncMaintenanceTabs();
+    const panel = document.querySelector('#maintenance-view [data-record-panel="maintenance"]');
+    if (panel) applyRecordFilters(panel, 'maintenance');
     return;
   }
   const openViewButton = event.target.closest('[data-open-view]');
@@ -2641,7 +3122,7 @@ document.addEventListener('click', async (event) => {
       });
       const destination = {
         leads: 'clients', visits: 'visits', payments: 'rents', rentals: 'rents',
-        maintenance: 'maintenance', clients: 'clients',
+        maintenance: 'maintenance', clients: 'clients', matching: 'matching',
       }[notificationItem.dataset.entity];
       if (notificationItem.dataset.entity === 'clients' || notificationItem.dataset.entity === 'leads') {
         clientTableTab = notificationItem.dataset.entity === 'leads' ? 'potenciales' : 'todos';
@@ -2665,6 +3146,16 @@ document.addEventListener('click', async (event) => {
 });
 
 document.addEventListener('submit', (event) => {
+  if (event.target.matches('[data-match-filters]')) {
+    event.preventDefault();
+    const data = Object.fromEntries(new FormData(event.target));
+    if (data.precio_min && data.precio_max && Number(data.precio_min) > Number(data.precio_max)) {
+      showToast('El precio mínimo no puede superar el precio máximo.', true);
+      return;
+    }
+    matchingState.filters = Object.fromEntries(Object.entries(data).filter(([, value]) => value !== ''));
+    loadMatchPage(1).catch((error) => showToast(`No se pudieron filtrar las coincidencias: ${error.message}`, true));
+  }
   if (event.target.id === 'workflow-form') {
     event.preventDefault();
     submitDialog(event.target);
@@ -2676,15 +3167,11 @@ document.addEventListener('submit', (event) => {
 });
 
 document.addEventListener('change', (event) => {
-  if (event.target.matches('[data-client-column]')) {
-    const panel = event.target.closest('[data-record-panel]');
-    const resource = panel.dataset.recordPanel;
-    const key = event.target.dataset.clientColumn;
-    if (event.target.checked) clientColumns[resource].add(key);
-    else clientColumns[resource].delete(key);
-    panel.querySelectorAll('[data-column-key]').forEach((cell) => {
-      if (cell.dataset.columnKey === key) cell.hidden = !event.target.checked;
-    });
+  if (event.target.matches('[data-table-column]')) {
+    const scope = event.target.closest('[data-column-scope]');
+    const resource = event.target.dataset.columnResource;
+    const columns = resource === 'dashboard-properties' ? dashboardPropertyColumns : tableConfig[resource]?.columns;
+    if (scope && columns) setTableColumnVisibility(scope, resource, columns, event.target.dataset.tableColumn, event.target.checked);
   }
   if (event.target.matches('#client-activity-form [name="tipo"]')) {
     const form = event.target.form;
@@ -2704,7 +3191,8 @@ document.addEventListener('change', (event) => {
     const panel = event.target.closest('.persisted-panel');
     const resource = panel?.dataset.recordPanel;
     if (resource) {
-      const state = recordFilters[resource] || (recordFilters[resource] = { search: '', from: '', to: '' });
+      const filterKey = panel.dataset.filterKey || resource;
+      const state = recordFilters[filterKey] || (recordFilters[filterKey] = { search: '', from: '', to: '' });
       state[event.target.dataset.recordDate] = event.target.value;
       if (resource === 'properties') applyPropertyFilters(panel);
       else applyRecordFilters(panel, resource);
@@ -2719,15 +3207,28 @@ document.addEventListener('change', (event) => {
   }
 });
 
+let matchSearchTimer;
 document.addEventListener('input', (event) => {
+  if (event.target.matches('[data-match-search]')) {
+    matchingState.search = event.target.value.trim();
+    matchingState.requestId += 1;
+    clearTimeout(matchSearchTimer);
+    matchSearchTimer = setTimeout(() => {
+      loadMatchPage(1).catch((error) => showToast(`No se pudieron buscar las coincidencias: ${error.message}`, true));
+    }, 250);
+  }
   if (event.target.matches('[data-record-search]')) {
     const panel = event.target.closest('.persisted-panel');
     const resource = event.target.dataset.recordSearch;
-    const state = recordFilters[resource] || (recordFilters[resource] = { search: '', from: '', to: '' });
+    const filterKey = panel.dataset.filterKey || resource;
+    const state = recordFilters[filterKey] || (recordFilters[filterKey] = { search: '', from: '', to: '' });
     state.search = event.target.value;
     applyRecordFilters(panel, resource);
   }
-  if (event.target.matches('[data-property-search]')) applyPropertyFilters(event.target.closest('.persisted-panel'));
+  if (event.target.matches('[data-property-search]')) {
+    propertyFilters.exactId = '';
+    applyPropertyFilters(event.target.closest('.persisted-panel'));
+  }
 });
 
 const search = document.getElementById('global-search');
@@ -2742,12 +3243,17 @@ search?.addEventListener('input', () => {
     if (resource === 'clients' || resource === 'leads') applyRecordFilters(panel, resource);
     else paginatePanel(panel, resource, true);
   });
+  matchingState.requestId += 1;
+  clearTimeout(matchSearchTimer);
+  matchSearchTimer = setTimeout(() => {
+    loadMatchPage(1).catch((error) => showToast(`No se pudieron buscar las coincidencias: ${error.message}`, true));
+  }, 250);
 });
 
 document.addEventListener('keydown', (event) => {
-  const tab = event.target.closest('[data-client-tab]');
+  const tab = event.target.closest('[data-client-tab], [data-contract-tab], [data-maintenance-priority]');
   if (tab && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
-    const tabs = [...tab.parentElement.querySelectorAll('[data-client-tab]')];
+    const tabs = [...tab.parentElement.querySelectorAll('[role="tab"]')];
     const index = tabs.indexOf(tab);
     const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1
       : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
@@ -2774,6 +3280,13 @@ function positionClientMenu(details) {
 
 document.addEventListener('toggle', (event) => {
   const details = event.target;
+  if (details.matches('[data-match-extra]') && details.open) {
+    loadMatchingExtra(details.dataset.matchExtra).catch((error) => {
+      details.querySelector('[data-match-extra-content]').textContent = 'No se pudieron cargar los datos.';
+      showToast(`No se pudo cargar el historial: ${error.message}`, true);
+    });
+    return;
+  }
   if (!details.matches('.client-row-actions') || !details.open) return;
   document.querySelectorAll('.client-row-actions[open]').forEach((other) => {
     if (other !== details) other.open = false;
@@ -2794,7 +3307,8 @@ document.addEventListener('click', (event) => {
   const panel = button.closest('.persisted-panel');
   const resource = panel?.dataset.recordPanel;
   if (!resource) return;
-  tablePages[resource] = (tablePages[resource] || 1) + (button.dataset.pageNav === 'next' ? 1 : -1);
+  const pageKey = panel.dataset.filterKey || resource;
+  tablePages[pageKey] = (tablePages[pageKey] || 1) + (button.dataset.pageNav === 'next' ? 1 : -1);
   paginatePanel(panel, resource);
 });
 

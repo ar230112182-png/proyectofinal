@@ -11,7 +11,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="estilo/style.css?v=19">
+    <link rel="stylesheet" href="estilo/style.css?v=24">
 </head>
 <body>
     <div class="top-loading-bar" id="top-loading-bar" aria-hidden="true"></div>
@@ -143,30 +143,41 @@
                         </div>
                     </section>
                     <div class="dashboard-grid">
-                        <section class="panel property-panel">
+                        <section class="panel property-panel" data-column-scope="dashboard-properties">
                             <div class="panel-heading">
                                 <div>
                                     <h2>Propiedades recientes</h2>
                                     <p>Últimos registros agregados al inventario</p>
                                 </div>
-                                <button class="text-button" data-view="properties">Ver todas <span>→</span></button>
+                                <div class="panel-heading-actions">
+                                    <details class="table-column-control">
+                                        <summary>Columnas</summary>
+                                        <div>
+                                            <label><input type="checkbox" data-table-column="titulo" data-column-resource="dashboard-properties" checked> Propiedad</label>
+                                            <label><input type="checkbox" data-table-column="categoria" data-column-resource="dashboard-properties" checked> Tipo</label>
+                                            <label><input type="checkbox" data-table-column="estado_propiedad" data-column-resource="dashboard-properties" checked> Estado</label>
+                                            <label><input type="checkbox" data-table-column="precio" data-column-resource="dashboard-properties" checked> Precio</label>
+                                            <label><input type="checkbox" data-table-column="agente" data-column-resource="dashboard-properties" checked> Responsable</label>
+                                        </div>
+                                    </details>
+                                    <button class="text-button" data-view="properties">Ver todas <span>→</span></button>
+                                </div>
                             </div>
                             <div class="property-table-wrap">
                                 <table class="data-table" id="property-table">
                                     <thead>
                                         <tr>
-                                            <th>ID</th>
-                                            <th>Propiedad</th>
-                                            <th>Tipo</th>
-                                            <th>Estado</th>
-                                            <th>Precio</th>
-                                            <th>Responsable</th>
+                                            <th data-column-key="titulo">Propiedad</th>
+                                            <th data-column-key="categoria">Tipo</th>
+                                            <th data-column-key="estado_propiedad">Estado</th>
+                                            <th data-column-key="precio">Precio</th>
+                                            <th data-column-key="agente">Responsable</th>
                                             <th></th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         <tr>
-                                            <td colspan="7" class="empty-records">Cargando propiedades...</td>
+                                            <td colspan="6" class="empty-records">Cargando propiedades...</td>
                                         </tr>
                                     </tbody>
                                 </table>
@@ -248,22 +259,38 @@
                         <div>
                             <p class="eyebrow">Modulo 03</p>
                             <h1>Motor de coincidencias</h1>
-                            <p class="intro-copy">Conecta automaticamente las preferencias de clientes con el inventario disponible.</p>
+                            <p class="intro-copy">Compara las preferencias de prospectos con propiedades disponibles.</p>
                         </div>
-                    </div>
-                    <div class="module-hero">
-                        <div class="module-hero-icon coral-bg">✧</div>
-                        <div>
-                            <h2>Matching y recomendaciones</h2>
-                            <p>Algoritmo de cruzamiento por zona, presupuesto, recamaras y amenidades. Genera alertas para el agente cuando entra una propiedad afin.</p>
-                        </div>
+                        <button type="button" class="primary-button" data-generate-matches>Generar coincidencias</button>
                     </div>
                     <div class="mini-stat-grid">
-                        <div><small>Coincidencias hoy</small><strong>42</strong></div>
-                        <div><small>Alertas enviadas</small><strong>18</strong></div>
-                        <div><small>Clientes con preferencias</small><strong>196</strong></div>
-                        <div><small>Precision estimada</small><strong>87%</strong></div>
+                        <div><small>Coincidencias</small><strong data-match-total>—</strong></div>
+                        <div><small>Prospectos con resultados</small><strong data-match-leads>—</strong></div>
+                        <div><small>Puntuación promedio</small><strong data-match-average>—</strong></div>
                     </div>
+                    <section class="panel persisted-panel matching-panel" aria-labelledby="matching-results-title">
+                        <div class="panel-heading">
+                            <div><h2 id="matching-results-title">Recomendaciones</h2>
+                                <p data-match-generation role="status">Cargando coincidencias...</p></div>
+                            <label class="record-search"><span>Buscar</span><input type="search" data-match-search placeholder="Prospecto o propiedad"></label>
+                        </div>
+                        <form class="matching-filters" data-match-filters>
+                            <label>Puntuación mínima (%)<input type="number" name="puntuacion" min="0" max="100" step="0.01"></label>
+                            <label>Ciudad<input type="search" name="ciudad" maxlength="100"></label>
+                            <label>Precio mínimo<input type="number" name="precio_min" min="0" step="0.01"></label>
+                            <label>Precio máximo<input type="number" name="precio_max" min="0" step="0.01"></label>
+                            <label>Operación<select name="operacion"><option value="">Todas</option><option value="VENTA">Venta</option><option value="RENTA">Renta</option></select></label>
+                            <label>Contacto<select name="contacto"><option value="">Todos</option><option value="pendiente">Pendiente</option><option value="contactado">Contactado</option></select></label>
+                            <label class="matching-checkbox"><input type="checkbox" name="favoritos" value="1"> Solo favoritos</label>
+                            <button type="submit" class="outline-button small-button">Aplicar filtros</button>
+                            <button type="button" class="text-button" data-match-clear>Limpiar</button>
+                        </form>
+                        <div data-match-results aria-live="polite"></div>
+                        <nav class="table-pagination" data-match-pagination aria-label="Paginación de coincidencias"></nav>
+                    </section>
+                    <details class="panel matching-extra" data-match-extra="changes"><summary>Propiedades no disponibles en la última generación</summary><div data-match-extra-content></div></details>
+                    <details class="panel matching-extra" data-match-extra="retired"><summary>Mi seguimiento de coincidencias retiradas</summary><div data-match-extra-content></div></details>
+                    <details class="panel matching-extra" data-match-extra="history"><summary>Historial de generaciones</summary><div data-match-extra-content></div></details>
                 </section>
                 <section class="view placeholder-view" id="visits-view">
                     <div class="page-intro">
@@ -274,13 +301,7 @@
                         </div>
                         <button class="primary-button"><span>＋</span> Agendar visita</button>
                     </div>
-                    <div class="module-hero">
-                        <div class="module-hero-icon yellow-bg">◷</div>
-                        <div>
-                            <h2>Agenda y seguimiento de visitas</h2>
-                            <p>Calendario compartido con recordatorios, asignacion de asesores, estado de visita y comentarios del cliente.</p>
-                        </div>
-                    </div>
+                    <section class="panel visit-calendar-panel" data-visit-calendar aria-label="Calendario de visitas"></section>
                     <div class="mini-stat-grid">
                         <div><small>Visitas esta semana</small><strong>32</strong></div>
                         <div><small>Hoy</small><strong>8</strong></div>
@@ -292,24 +313,23 @@
                     <div class="page-intro">
                         <div>
                             <p class="eyebrow">Modulo 05</p>
-                            <h1>Clientes y contratos</h1>
-                            <p class="intro-copy">Registra al cliente, el lote y los datos de la operación en un formato descargable.</p>
+                            <h1>Negociaciones y ventas</h1>
                         </div>
                         <button class="primary-button" data-open-form="contract"><span>＋</span> Nuevo cliente y contrato</button>
                     </div>
-                    <div class="module-hero">
-                        <div class="module-hero-icon ink-bg">▤</div>
-                        <div>
-                            <h2>Operaciones inmobiliarias</h2>
-                            <p>Guarda ventas y rentas, genera un formato imprimible con la información de las partes y consulta la ubicación de cada lote.</p>
-                        </div>
-                    </div>
-                    <div class="mini-stat-grid">
+                    <div class="mini-stat-grid contract-kpis">
                         <div><small>Contratos registrados</small><strong>0</strong></div>
                         <div><small>Ventas</small><strong>0</strong></div>
                         <div><small>Rentas</small><strong>0</strong></div>
                         <div><small>Contratos de este mes</small><strong>0</strong></div>
                     </div>
+                    <div class="client-tabs" role="tablist" aria-label="Vistas de negociaciones y ventas">
+                        <button type="button" role="tab" id="contract-tab-contracts" data-contract-tab="contracts" aria-controls="contract-panel-contracts" aria-selected="true">Contratos</button>
+                        <button type="button" role="tab" id="contract-tab-offers" data-contract-tab="offers" aria-controls="contract-panel-offers" aria-selected="false" tabindex="-1">Ofertas</button>
+                        <button type="button" role="tab" id="contract-tab-sales" data-contract-tab="sales" aria-controls="contract-panel-sales" aria-selected="false" tabindex="-1">Ventas</button>
+                        <button type="button" role="tab" id="contract-tab-rentals" data-contract-tab="rentals" aria-controls="contract-panel-rentals" aria-selected="false" tabindex="-1">Rentas</button>
+                    </div>
+                    <div data-contracts-tables></div>
                 </section>
                 <!-- Vistas para documentos legales y control financiero. -->
                 <section class="view placeholder-view" id="legal-view">
@@ -403,6 +423,13 @@
                         <div><small>Urgentes</small><strong>—</strong></div>
                         <div><small>En proceso</small><strong>—</strong></div>
                         <div><small>Costo final registrado</small><strong>—</strong></div>
+                    </div>
+                    <div class="client-tabs maintenance-priority-tabs" role="tablist" aria-label="Filtrar solicitudes por prioridad">
+                        <button type="button" role="tab" id="maintenance-tab-todas" data-maintenance-priority="todas" aria-controls="maintenance-record-panel" aria-selected="true">Todas <span data-maintenance-count>0</span></button>
+                        <button type="button" role="tab" id="maintenance-tab-urgente" data-maintenance-priority="urgente" aria-controls="maintenance-record-panel" aria-selected="false" tabindex="-1">Urgente <span data-maintenance-count>0</span></button>
+                        <button type="button" role="tab" id="maintenance-tab-alta" data-maintenance-priority="alta" aria-controls="maintenance-record-panel" aria-selected="false" tabindex="-1">Alta <span data-maintenance-count>0</span></button>
+                        <button type="button" role="tab" id="maintenance-tab-normal" data-maintenance-priority="normal" aria-controls="maintenance-record-panel" aria-selected="false" tabindex="-1">Normal <span data-maintenance-count>0</span></button>
+                        <button type="button" role="tab" id="maintenance-tab-baja" data-maintenance-priority="baja" aria-controls="maintenance-record-panel" aria-selected="false" tabindex="-1">Baja <span data-maintenance-count>0</span></button>
                     </div>
                 </section>
                 <!-- Vistas para administracion del equipo y consultas de resultados. -->
@@ -502,7 +529,7 @@
     <script src="js/libs/jspdf.umd.min.js"></script>
     <script src="js/libs/jspdf.plugin.autotable.min.js"></script>
     <script src="js/cruds/select-search.js?v=5"></script>
-    <script src="js/cruds/main.js?v=43"></script>
+    <script src="js/cruds/main.js?v=51"></script>
     <script>
         // Prepara las referencias compartidas para la navegacion y el feedback.
         const navItems = document.querySelectorAll('[data-view]');
@@ -516,7 +543,7 @@
             matching: 'Motor de coincidencias',
             visits: 'Agenda y citas',
             legal: 'Legal y expediente',
-            contracts: 'Clientes y contratos',
+            contracts: 'Negociaciones y ventas',
             finance: 'Comisiones y finanzas',
             rents: 'Cobranza y renovaciones',
             maintenance: 'Mantenimiento y solicitudes',
@@ -572,7 +599,7 @@
         const sessionMenu = document.createElement('div');
         sessionMenu.className = 'session-menu';
         sessionMenu.hidden = true;
-        sessionMenu.innerHTML = '<a href="/portal.html">Ir al portal público</a><button type="button" data-session-action="suspend">Suspender sesión</button><button type="button" data-session-action="logout">Salir</button>';
+        sessionMenu.innerHTML = '<a href="/portal.html">Ir al portal público</a><a href="/portal-inquilinos.html">Portal de inquilinos</a><button type="button" data-session-action="suspend">Suspender sesión</button><button type="button" data-session-action="logout">Salir</button>';
         document.body.append(sessionMenu);
     </script>
 </body>

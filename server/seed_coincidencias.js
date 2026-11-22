@@ -8,7 +8,7 @@ async function seedCoincidencias() {
   const sqlFile = path.join(__dirname, '..', 'bd', 'seed_coincidencias.sql');
   const sql = fs.readFileSync(sqlFile, 'utf8');
 
-  console.log('Poblando prospectos y coincidencias guardadas...');
+  console.log('Poblando prospectos, coincidencias y el historial de demostración...');
   const client = await pool.connect();
 
   try {
@@ -19,7 +19,11 @@ async function seedCoincidencias() {
       UNION ALL
       SELECT 'preferencias_lead', count(*) FROM preferencias_lead
       UNION ALL
-      SELECT 'coincidencias', count(*) FROM coincidencias;
+      SELECT 'coincidencias', count(*) FROM coincidencias
+      UNION ALL
+      SELECT 'historial_demo', count(*) FROM historial_generaciones_coincidencias WHERE es_demo
+      UNION ALL
+      SELECT 'propiedades_no_disponibles_demo', count(*) FROM coincidencias_retiradas WHERE es_demo AND no_disponible;
     `);
 
     console.log('Datos cargados exitosamente:');
