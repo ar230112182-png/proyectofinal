@@ -723,11 +723,11 @@ entorno de despliegue.
 - Revisa que PostgreSQL esté iniciado.
 - Ejecuta `npm install` si faltan dependencias.
 - Ejecuta `npm start` desde la carpeta que contiene `package.json`, no desde
-  una carpeta de descarga incompleta. Por ejemplo, si clonaste el proyecto en
-  `C:\Users\saul3\proyectofinal`:
+  una carpeta de descarga incompleta. Sustituye la ruta de ejemplo por la
+  ubicación donde clonaste el proyecto:
 
 ```powershell
-Set-Location C:\Users\saul3\proyectofinal
+Set-Location C:\ruta\al\proyectofinal
 npm start
 ```
 
