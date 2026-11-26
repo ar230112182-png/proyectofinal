@@ -62,6 +62,9 @@ test('property images are validated, stored atomically and served from the datab
     data.set('tipo_operacion', 'VENTA');
     data.set('precio', '100');
     data.set('costo_adquisicion', '60.50');
+    data.set('superficie', '100');
+    data.set('frente_metros', '10');
+    data.set('fondo_metros', '10');
     if (bytes) data.set('imagen', new Blob([bytes], { type }), 'foto.png');
     return data;
   }
@@ -76,7 +79,7 @@ test('property images are validated, stored atomically and served from the datab
   const created = await post(form(png));
   assert.equal(created.status, 201);
   assert.equal((await created.json()).data.imagen_url, '/api/properties/42/image');
-  assert.equal(calls.find((call) => call.sql.includes('INSERT INTO propiedades')).values[15], '60.50');
+  assert.equal(calls.find((call) => call.sql.includes('INSERT INTO propiedades')).values[17], '60.50');
   assert.deepEqual(calls.find((call) => call.sql.includes('INSERT INTO propiedad_imagenes')).values.slice(1), [png, 'image/png']);
   assert.ok(calls.some((call) => call.sql === 'COMMIT'));
   const image = await fetch(`${base}/42/image`);
@@ -131,7 +134,8 @@ test('new properties require a valid acquisition cost; existing costs can remain
   const base = `http://127.0.0.1:${server.address().port}/api/properties`;
   const token = jwt.sign({ id_usuario: 1, rol: 'administrador' }, process.env.JWT_SECRET);
   const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
-  const payload = { categoria: 'Lote baldío', tipo_operacion: 'VENTA', precio: 100 };
+  const payload = { categoria: 'Lote baldío', tipo_operacion: 'VENTA', precio: 100,
+    superficie: 100, frente_metros: 10, fondo_metros: 10 };
   for (const cost of [undefined, '', 0, -1, '1.001', '1000000000000', 'abc']) {
     const response = await fetch(base, { method: 'POST', headers, body: JSON.stringify({ ...payload, costo_adquisicion: cost }) });
     assert.equal(response.status, 400, String(cost));
@@ -140,6 +144,130 @@ test('new properties require a valid acquisition cost; existing costs can remain
   assert.equal(oldProperty.status, 200);
   const badEdit = await fetch(`${base}/42`, { method: 'PUT', headers, body: JSON.stringify({ costo_adquisicion: -2 }) });
   assert.equal(badEdit.status, 400);
+});
+
+test('property dimensions enforce form limits and persist on edits', async (t) => {
+  const server = await new Promise((resolve) => {
+    const listener = app.listen(0, '127.0.0.1', () => resolve(listener));
+  });
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const base = `http://127.0.0.1:${server.address().port}/api/properties`;
+  const token = jwt.sign({ id_usuario: 1, rol: 'administrador' }, process.env.JWT_SECRET);
+  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+  const payload = {
+    categoria: 'Lote baldío',
+    tipo_operacion: 'VENTA',
+    precio: 100,
+    costo_adquisicion: 50,
+    superficie: 100,
+    frente_metros: 10,
+    fondo_metros: 10,
+  };
+
+  calls.length = 0;
+  for (const invalid of [
+    { superficie: undefined },
+    { frente_metros: 0 },
+    { fondo_metros: -1 },
+    { superficie: 1000000 },
+    { frente_metros: 'Infinity' },
+  ]) {
+    const response = await fetch(base, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ ...payload, ...invalid }),
+    });
+    assert.equal(response.status, 400);
+    assert.match((await response.json()).error, /medidas/);
+  }
+  assert.equal(calls.length, 0);
+
+  const maximumDimensions = await fetch(base, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      ...payload,
+      superficie: 999999.99,
+      frente_metros: 999999.99,
+      fondo_metros: 999999.99,
+    }),
+  });
+  assert.equal(maximumDimensions.status, 201);
+  const insert = calls.find((call) => call.sql.includes('INSERT INTO propiedades'));
+  assert.deepEqual(insert.values.slice(5, 8), [999999.99, 999999.99, 999999.99]);
+
+  const update = await fetch(`${base}/42`, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify({ superficie: 150.25, frente_metros: 12.5, fondo_metros: 15 }),
+  });
+  assert.equal(update.status, 200);
+  const updateCall = calls.find((call) => call.sql.includes('UPDATE propiedades'));
+  assert.deepEqual(updateCall.values.slice(10, 13), [150.25, 12.5, 15]);
+
+  const callsBeforeInvalidEdit = calls.length;
+  const invalidUpdate = await fetch(`${base}/42`, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify({ fondo_metros: 1000000 }),
+  });
+  assert.equal(invalidUpdate.status, 400);
+  assert.equal(calls.length, callsBeforeInvalidEdit);
+});
+
+test('property creation and editing only accept supported states', async (t) => {
+  const server = await new Promise((resolve) => {
+    const listener = app.listen(0, '127.0.0.1', () => resolve(listener));
+  });
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const base = `http://127.0.0.1:${server.address().port}/api/properties`;
+  const token = jwt.sign({ id_usuario: 1, rol: 'administrador' }, process.env.JWT_SECRET);
+  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+  const payload = {
+    categoria: 'Lote baldío',
+    tipo_operacion: 'VENTA',
+    precio: 100,
+    costo_adquisicion: 50,
+    superficie: 100,
+    frente_metros: 10,
+    fondo_metros: 10,
+  };
+
+  calls.length = 0;
+  const invalidCreate = await fetch(base, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ ...payload, estado_propiedad: 'EN PROCESO' }),
+  });
+  assert.equal(invalidCreate.status, 400);
+  assert.equal(calls.length, 0);
+
+  const created = await fetch(base, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ ...payload, estado_propiedad: 'Reservada' }),
+  });
+  assert.equal(created.status, 201);
+  const insert = calls.find((call) => call.sql.includes('INSERT INTO propiedades'));
+  assert.equal(insert.values[12], 'Reservada');
+
+  const callsBeforeInvalidEdit = calls.length;
+  const invalidEdit = await fetch(`${base}/42`, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify({ estado_propiedad: 'EN PROCESO' }),
+  });
+  assert.equal(invalidEdit.status, 400);
+  assert.equal(calls.length, callsBeforeInvalidEdit);
+
+  const edited = await fetch(`${base}/42`, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify({ estado_propiedad: 'Vendida' }),
+  });
+  assert.equal(edited.status, 200);
+  const update = calls.find((call) => call.sql.includes('UPDATE propiedades'));
+  assert.equal(update.values[3], 'Vendida');
 });
 
 test('property listing only exposes acquisition cost to internal roles', async (t) => {
@@ -153,7 +281,9 @@ test('property listing only exposes acquisition cost to internal roles', async (
     const token = jwt.sign({ id_usuario: 1, rol: role }, process.env.JWT_SECRET);
     const response = await fetch(base, { headers: { Authorization: `Bearer ${token}` } });
     assert.equal(response.status, 200);
-    assert.equal(calls.find((call) => call.sql.includes('SELECT p.id_propiedad')).values[2], allowed);
+    const listing = calls.find((call) => call.sql.includes('SELECT p.id_propiedad'));
+    assert.equal(listing.values[2], allowed);
+    assert.match(listing.sql, /p\.tipo_operacion, p\.superficie, p\.frente_metros, p\.fondo_metros/);
   }
 });
 

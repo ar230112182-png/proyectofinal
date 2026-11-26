@@ -141,7 +141,7 @@ const dateFieldByResource = {
 };
 
 const tableConfig = {
-  properties: { title: 'Propiedades registradas', columns: [['titulo', 'Propiedad'], ['categoria', 'Categoría'], ['tipo_operacion', 'Operación'], ['precio', 'Precio'], ['estado_propiedad', 'Estado']], actions: ['edit', 'delete', 'map'] },
+  properties: { title: 'Propiedades registradas', columns: [['titulo', 'Propiedad'], ['categoria', 'Categoría'], ['tipo_operacion', 'Operación'], ['precio', 'Precio'], ['frente_metros', 'Frente m'], ['fondo_metros', 'Fondo m'], ['superficie', 'Superficie m²'], ['estado_propiedad', 'Estado']], actions: ['edit', 'delete', 'map'] },
   clients: { title: 'Clientes', columns: [['nombre', 'Nombre'], ['apellido_paterno', 'Apellido'], ['correo', 'Correo'], ['telefono', 'Teléfono'], ['ciudad', 'Ciudad'], ['activo', 'Estado'], ['fecha_registro', 'Fecha de registro']], actions: ['history', 'portal-access', 'status'] },
   leads: { title: 'Clientes potenciales', columns: [['nombre', 'Cliente potencial'], ['correo', 'Correo'], ['telefono', 'Teléfono'], ['origen', 'Origen'], ['estado', 'Estado'], ['creado_en', 'Fecha de registro']], actions: ['status'] },
   visits: { title: 'Agenda de visitas', columns: [['fecha_cita', 'Fecha'], ['cliente', 'Cliente'], ['propiedad', 'Propiedad'], ['agente', 'Agente'], ['estado', 'Estado']], actions: ['status'] },
@@ -198,6 +198,7 @@ const forms = {
     ['precio', 'Precio de venta o renta', 'number', true], ['descripcion', 'Descripción', 'textarea'],
     ['', 'Características', 'section'],
     ['superficie', 'Superficie m²', 'number'],
+    ['frente_metros', 'Medida de frente (m)', 'number', true], ['fondo_metros', 'Medida de fondo (m)', 'number', true],
     ['habitaciones', 'Habitaciones', 'number'], ['banos', 'Baños', 'number'], ['estacionamientos', 'Estacionamientos', 'number'],
     ['', 'Ubicación', 'section'],
     ['calle', 'Calle', 'text', true], ['numero', 'Número', 'text'], ['colonia', 'Colonia', 'text'], ['ciudad', 'Ciudad', 'text', true], ['estado', 'Estado', 'text', true], ['codigo_postal', 'Código postal', 'text'],
@@ -1372,9 +1373,21 @@ function configureContractForm(form) {
       const latitude = fields.querySelector('[name="latitud"]');
       const longitude = fields.querySelector('[name="longitud"]');
       const area = fields.querySelector('[name="superficie_m2"]');
-      if (!latitude.value && selectedProperty.latitud !== null) latitude.value = selectedProperty.latitud;
-      if (!longitude.value && selectedProperty.longitud !== null) longitude.value = selectedProperty.longitud;
-      if (!area.value && selectedProperty.superficie) area.value = selectedProperty.superficie;
+      const front = fields.querySelector('[name="frente_metros"]');
+      const back = fields.querySelector('[name="fondo_metros"]');
+      const agreedPrice = fields.querySelector('[name="precio_total"]');
+      const monthlyRent = fields.querySelector('[name="renta_mensual"]');
+      latitude.value = selectedProperty.latitud ?? '';
+      longitude.value = selectedProperty.longitud ?? '';
+      area.value = selectedProperty.superficie ?? '';
+      front.value = selectedProperty.frente_metros ?? '';
+      back.value = selectedProperty.fondo_metros ?? '';
+      agreedPrice.value = selectedProperty.precio ?? '';
+      monthlyRent.value = isRental ? (selectedProperty.precio ?? '') : '';
+    } else {
+      ['latitud', 'longitud', 'superficie_m2', 'frente_metros', 'fondo_metros', 'precio_total', 'renta_mensual'].forEach((name) => {
+        fields.querySelector(`[name="${name}"]`).value = '';
+      });
     }
   };
 
@@ -2255,12 +2268,22 @@ async function downloadDocument(id) {
   const response = await fetch(`/api/workflows/documents/${id}/file`, {
     headers: { Authorization: `Bearer ${api.token}` },
   });
-  if (!response.ok) throw new Error('No se pudo descargar el documento.');
+  if (!response.ok) {
+    let message = 'No se pudo descargar el documento.';
+    try {
+      const payload = await response.json();
+      if (payload.error) message = payload.error;
+    } catch (_error) {}
+    throw new Error(message);
+  }
+  const url = URL.createObjectURL(await response.blob());
   const link = document.createElement('a');
-  link.href = URL.createObjectURL(await response.blob());
+  link.href = url;
   link.download = records.documents.find((documentRecord) => String(documentRecord.id_documento) === String(id))?.nombre_archivo || 'documento';
+  document.body.append(link);
   link.click();
-  URL.revokeObjectURL(link.href);
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 // Construye una vista imprimible con la informacion registrada del contrato.
@@ -2402,6 +2425,8 @@ function openPropertyEdit(id) {
     ['estado_propiedad', 'Estado', 'select', true, ['Disponible', 'Reservada', 'Vendida', 'Rentada', 'Inactiva']],
     ...(isAdmin ? [['id_categoria', 'Categoría', 'options', true, 'categories']] : []),
     ['descripcion', 'Descripción', 'textarea'],
+    ['', 'Medidas', 'section'],
+    ['superficie', 'Superficie m²', 'number', true], ['frente_metros', 'Medida de frente (m)', 'number', true], ['fondo_metros', 'Medida de fondo (m)', 'number', true],
     ['', 'Ubicación', 'section'],
     ['latitud', 'Latitud de Google Maps', 'number'], ['longitud', 'Longitud de Google Maps', 'number'],
     ['', 'Fotografía', 'section'],

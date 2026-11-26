@@ -59,5 +59,6 @@ test('only the tenant can download own rental contract and shared documents', as
   assert.equal((await get('/documents/6/file', tenant)).status, 404);
   const document = await get('/documents/5/file', tenant);
   assert.equal(document.status, 200);
+  assert.equal(document.headers.get('content-disposition'), "attachment; filename*=UTF-8''compartido.txt");
   assert.equal(await document.text(), 'documento');
 });

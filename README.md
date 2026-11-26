@@ -33,6 +33,24 @@ servidor no ejecuta el seed ni restablece contraseñas. Una cuenta con rol
 `cliente` que inicia sesión desde el panel es dirigida al portal de inquilinos.
 El menú de sesión también ofrece un acceso directo al portal de inquilinos.
 
+## Pruebas automatizadas
+
+Ejecuta `npm test` para correr la suite de pruebas automatizadas. Las pruebas
+de integración PostgreSQL se omiten por defecto. Para habilitar la prueba de
+la migración de medidas, confirma que `.env` apunta exclusivamente a una base
+de pruebas y ejecuta en PowerShell:
+
+```powershell
+$env:TEST_PROPERTY_DB = '1'
+$env:TEST_MAINTENANCE_DB = '1'
+$env:TEST_MATCHING_DB = '1'
+npm test
+Remove-Item Env:TEST_PROPERTY_DB, Env:TEST_MAINTENANCE_DB, Env:TEST_MATCHING_DB
+```
+
+Las pruebas usan transacciones temporales; la prueba de medidas aplica la
+migración dos veces y revierte los cambios al finalizar.
+
 ## Funcionalidades
 
 - Autenticación con JWT y contraseñas almacenadas con bcrypt.

@@ -38,6 +38,7 @@ const validPositiveNumber = (value) => value !== '' && value !== null && value !
 const validAcquisitionCost = (value) => validPositiveNumber(value)
   && /^\d+(?:\.\d{1,2})?$/.test(String(value))
   && Number(value) <= 999999999999.99;
+const validPropertyDimension = (value) => validPositiveNumber(value) && Number(value) <= 999999.99;
 const validOptionalNonNegativeNumber = (value) => value === undefined || value === null || value === ''
   || (isNumericInput(value) && Number(value) >= 0);
 const validOptionalInteger = (value) => value === undefined || value === null || value === ''
@@ -61,7 +62,7 @@ router.get('/', requireAuth, async (request, response, next) => {
       SELECT p.id_propiedad, p.id_categoria, p.id_usuario, p.titulo,
              p.descripcion, p.precio,
              CASE WHEN $3::boolean THEN p.costo_adquisicion ELSE NULL END AS costo_adquisicion,
-             p.tipo_operacion, p.superficie,
+             p.tipo_operacion, p.superficie, p.frente_metros, p.fondo_metros,
              p.habitaciones, p.banos, p.estacionamientos, p.estado_propiedad,
              p.fecha_publicacion,
              CASE WHEN EXISTS (SELECT 1 FROM propiedad_imagenes i WHERE i.id_propiedad = p.id_propiedad)
@@ -110,7 +111,7 @@ router.get('/:id/image', async (request, response, next) => {
 router.post('/', requireAuth, requireRole('agente', 'administrador'), parsePropertyImage, async (request, response, next) => {
   const {
     id_categoria, categoria, id_usuario, titulo, descripcion, precio, costo_adquisicion,
-    tipo_operacion, operacion, superficie, habitaciones, banos, estacionamientos,
+    tipo_operacion, operacion, superficie, frente_metros, fondo_metros, habitaciones, banos, estacionamientos,
     estado_propiedad, calle, numero, colonia, ciudad, estado, codigo_postal,
     amenidades, imagen_url, latitud, longitud,
   } = request.body;
@@ -121,13 +122,14 @@ router.post('/', requireAuth, requireRole('agente', 'administrador'), parsePrope
     : estado_propiedad;
   const propertyStatus = typeof statusValue === 'string' ? statusValue.toLocaleLowerCase() : '';
   if (!validPositiveNumber(precio) || !validAcquisitionCost(costo_adquisicion) || !['VENTA', 'RENTA'].includes(String(operationType || '').toUpperCase())
+    || !validPropertyDimension(superficie) || !validPropertyDimension(frente_metros) || !validPropertyDimension(fondo_metros)
     || (!id_categoria && !categoria)
     || !['disponible', 'reservada', 'vendida', 'rentada', 'inactiva'].includes(propertyStatus)
     || (id_categoria !== undefined && id_categoria !== null && id_categoria !== ''
       && (!Number.isSafeInteger(Number(id_categoria)) || Number(id_categoria) <= 0))
     || (id_usuario !== undefined && id_usuario !== null && id_usuario !== ''
       && (!Number.isSafeInteger(Number(id_usuario)) || Number(id_usuario) <= 0))) {
-    return response.status(400).json({ error: 'Completa costo de adquisición, precio de venta o renta, operación y categoría.' });
+    return response.status(400).json({ error: 'Completa costo de adquisición, precio, operación, categoría y medidas válidas (superficie, frente y fondo).' });
   }
   const normalizedCategory = String(categoria || '').trim();
   if (!id_categoria && (typeof categoria !== 'string' || !normalizedCategory || normalizedCategory.length > 100)) {
@@ -146,6 +148,8 @@ router.post('/', requireAuth, requireRole('agente', 'administrador'), parsePrope
     || !validOptionalText(estado_propiedad, 40)
     || !validOptionalText(imagen_url, 2048)
     || !validOptionalNonNegativeNumber(superficie)
+    || !validOptionalNonNegativeNumber(frente_metros)
+    || !validOptionalNonNegativeNumber(fondo_metros)
     || !validOptionalInteger(habitaciones) || !validOptionalInteger(banos)
     || !validOptionalInteger(estacionamientos)
     || !validOptionalImageUrl(imagen_url)
@@ -195,13 +199,14 @@ router.post('/', requireAuth, requireRole('agente', 'administrador'), parsePrope
       : request.user.id_usuario;
     const property = await client.query(`
       INSERT INTO propiedades
-        (id_categoria, id_usuario, titulo, descripcion, precio, superficie,
+        (id_categoria, id_usuario, titulo, descripcion, precio, superficie, frente_metros, fondo_metros,
          habitaciones, banos, estacionamientos, tipo_operacion,
          estado_propiedad, amenidades, imagen_url, latitud, longitud, costo_adquisicion)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13, $14, $15, $16)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, $15, $16, $17, $18)
       RETURNING *
     `, [categoryId, assignedUserId, (titulo || 'Lote baldío').trim(), descripcion || null, precio,
-      superficie || null, isVacantLot ? 0 : (habitaciones || 0), isVacantLot ? 0 : (banos || 0),
+      superficie || null, frente_metros || null, fondo_metros || null,
+      isVacantLot ? 0 : (habitaciones || 0), isVacantLot ? 0 : (banos || 0),
       isVacantLot ? 0 : (estacionamientos || 0),
       operationType, statusValue, JSON.stringify(amenidades || []),
       imagen_url || null, latitud === '' ? null : latitud || null, longitud === '' ? null : longitud || null, costo_adquisicion]);
@@ -233,13 +238,16 @@ router.post('/', requireAuth, requireRole('agente', 'administrador'), parsePrope
 
 router.put('/:id', requireAuth, requireRole('agente', 'administrador'), parsePropertyImage, async (request, response, next) => {
   const { id } = request.params;
-  const { titulo, descripcion, precio, costo_adquisicion, estado_propiedad, estado, id_categoria, imagen_url, latitud, longitud } = request.body;
+  const { titulo, descripcion, precio, costo_adquisicion, estado_propiedad, estado, id_categoria, imagen_url, latitud, longitud, superficie, frente_metros, fondo_metros } = request.body;
   const propertyStatus = estado_propiedad ?? estado;
   if ((titulo !== undefined && (typeof titulo !== 'string' || !titulo.trim() || titulo.trim().length > 200))
     || !validOptionalText(descripcion, 2000)
     || !validOptionalText(imagen_url, 2048)
     || (precio !== undefined && precio !== null && !validPositiveNumber(precio))
     || (costo_adquisicion !== undefined && costo_adquisicion !== null && costo_adquisicion !== '' && !validAcquisitionCost(costo_adquisicion))
+    || (superficie !== undefined && superficie !== null && superficie !== '' && !validPropertyDimension(superficie))
+    || (frente_metros !== undefined && frente_metros !== null && frente_metros !== '' && !validPropertyDimension(frente_metros))
+    || (fondo_metros !== undefined && fondo_metros !== null && fondo_metros !== '' && !validPropertyDimension(fondo_metros))
     || !validOptionalText(propertyStatus, 40)
     || (propertyStatus !== undefined && propertyStatus !== null && propertyStatus !== ''
       && !['disponible', 'reservada', 'vendida', 'rentada', 'inactiva'].includes(String(propertyStatus).toLocaleLowerCase()))
@@ -285,11 +293,15 @@ router.put('/:id', requireAuth, requireRole('agente', 'administrador'), parsePro
           imagen_url = COALESCE($6, imagen_url),
           latitud = COALESCE($7, latitud),
           longitud = COALESCE($8, longitud),
+          superficie = COALESCE($11, superficie),
+          frente_metros = COALESCE($12, frente_metros),
+          fondo_metros = COALESCE($13, fondo_metros),
           costo_adquisicion = COALESCE($10, costo_adquisicion)
       WHERE id_propiedad = $9
         AND eliminado = FALSE
       RETURNING *
-    `, [titulo, descripcion, precio, estado_propiedad || estado, id_categoria, imagen_url, latitud, longitud, id, costo_adquisicion === '' ? null : costo_adquisicion]);
+    `, [titulo, descripcion, precio, estado_propiedad || estado, id_categoria, imagen_url, latitud, longitud, id,
+      costo_adquisicion === '' ? null : costo_adquisicion, superficie || null, frente_metros || null, fondo_metros || null]);
 
     if (!result.rowCount) {
       await client.query('ROLLBACK');

@@ -17,7 +17,7 @@ test('long forms group all their original controls once, including the map', () 
   vm.runInContext(extract('const forms = {', 'const fieldRules = {'), context);
   vm.runInContext(extract('function renderFormSections(', '// Configura el formulario solicitado'), context);
   const expected = {
-    property: ['titulo', 'categoria', 'tipo_operacion', 'costo_adquisicion', 'precio', 'descripcion', 'superficie', 'habitaciones', 'banos', 'estacionamientos', 'calle', 'numero', 'colonia', 'ciudad', 'estado', 'codigo_postal', 'ubicacion_mapa', 'imagen'],
+    property: ['titulo', 'categoria', 'tipo_operacion', 'costo_adquisicion', 'precio', 'descripcion', 'superficie', 'frente_metros', 'fondo_metros', 'habitaciones', 'banos', 'estacionamientos', 'calle', 'numero', 'colonia', 'ciudad', 'estado', 'codigo_postal', 'ubicacion_mapa', 'imagen'],
     client: ['nombre', 'apellido_paterno', 'apellido_materno', 'curp', 'correo', 'telefono', 'direccion', 'ciudad', 'estado', 'codigo_postal'],
     lead: ['nombre', 'correo', 'telefono', 'ciudad', 'tipo', 'operacion', 'precio_min', 'precio_max', 'habitaciones_min'],
     maintenance: ['id_propiedad', 'id_renta', 'titulo', 'descripcion', 'prioridad', 'asignado_a', 'costo_estimado', 'fecha_limite'],

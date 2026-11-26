@@ -48,7 +48,8 @@ test('contract selections retain the existing client and rental rules', () => {
   const context = vm.createContext({
     form: { querySelector: () => fields },
     optionData: { clients: [{ id: 8, nombre: 'Cliente existente' }], properties: [
-      { id: 2, nombre: 'Casa', tipo_operacion: 'VENTA', latitud: '19.4', longitud: '-99.1', superficie: '120' },
+      { id: 2, nombre: 'Casa', tipo_operacion: 'VENTA', latitud: '19.4', longitud: '-99.1',
+        superficie: '120', frente_metros: '10', fondo_metros: '12', precio: '850000' },
     ] },
     escapeHtml: String,
     Event: class {},
@@ -62,6 +63,9 @@ test('contract selections retain the existing client and rental rules', () => {
   assert.equal(inputs.latitud.value, '19.4');
   assert.equal(inputs.longitud.value, '-99.1');
   assert.equal(inputs.superficie_m2.value, '120');
+  assert.equal(inputs.frente_metros.value, '10');
+  assert.equal(inputs.fondo_metros.value, '12');
+  assert.equal(inputs.precio_total.value, '850000');
   assert.equal(inputs.latitud.required, true);
   assert.equal(inputs.renta_mensual.disabled, true);
   inputs.id_cliente.value = '8';

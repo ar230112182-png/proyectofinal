@@ -8,6 +8,7 @@ const pool = require('./db');
 const authRoutes = require('./routes/auth');
 const propertyRoutes = require('./routes/properties');
 const workflowRoutes = require('./routes/workflows');
+const errorHandler = require('./error-handler');
 
 const app = express();
 const port = Number(process.env.PORT || 3007);
@@ -45,16 +46,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/properties', propertyRoutes);
 app.use('/api/workflows', workflowRoutes);
 
-app.use((error, _request, response, _next) => {
-  console.error(error);
-  if (error.code === 'LIMIT_FILE_SIZE') {
-    return response.status(413).json({ error: 'El archivo supera el límite de 10 MB.' });
-  }
-  if (error.message === 'Tipo de archivo no permitido.') {
-    return response.status(400).json({ error: error.message });
-  }
-  response.status(500).json({ error: 'Error interno del servidor.' });
-});
+app.use(errorHandler);
 
 app.listen(port, host, () => {
   console.log(`Bienes y Negocios Renato disponible en http://localhost:${port}`);

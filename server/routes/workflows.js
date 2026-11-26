@@ -778,7 +778,7 @@ router.get('/tenant/documents/:id/file', requireAuth, requireRole('cliente'), as
     }
     const file = result.rows[0];
     response.type(file.mime_type || 'application/octet-stream');
-    response.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(file.nombre_archivo)}"`);
+    response.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(file.nombre_archivo || 'documento')}`);
     return response.send(file.contenido);
   } catch (error) {
     return next(error);
@@ -974,7 +974,8 @@ router.get('/options', requireAuth, requireRole('agente', 'administrador'), asyn
       pool.query(`
         SELECT p.id_propiedad AS id,
           p.titulo || COALESCE(' · ' || d.ciudad, '') AS nombre,
-          p.tipo_operacion, p.latitud, p.longitud, p.superficie, p.precio
+          p.tipo_operacion, p.latitud, p.longitud, p.superficie,
+          p.frente_metros, p.fondo_metros, p.precio
         FROM propiedades p LEFT JOIN direcciones d ON d.id_propiedad = p.id_propiedad
         WHERE p.eliminado = FALSE
         ORDER BY p.titulo
@@ -1289,6 +1290,7 @@ router.post('/contracts', requireAuth, requireRole('agente', 'administrador'), a
 });
 
 router.get('/documents/:id/file', requireAuth, requireRole('agente', 'administrador'), async (request, response, next) => {
+  if (!isPositiveId(request.params.id)) return response.status(404).json({ error: 'Documento no encontrado.' });
   try {
     const result = await pool.query(`
       SELECT nombre_archivo, mime_type, contenido FROM expedientes_legales WHERE id_documento = $1
@@ -1296,9 +1298,10 @@ router.get('/documents/:id/file', requireAuth, requireRole('agente', 'administra
     if (!result.rowCount || !result.rows[0].contenido) {
       return response.status(404).json({ error: 'Archivo no encontrado.' });
     }
-    response.type(result.rows[0].mime_type || 'application/octet-stream');
-    response.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(result.rows[0].nombre_archivo)}"`);
-    return response.send(result.rows[0].contenido);
+    const file = result.rows[0];
+    response.type(file.mime_type || 'application/octet-stream');
+    response.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(file.nombre_archivo || 'documento')}`);
+    return response.send(file.contenido);
   } catch (error) {
     return next(error);
   }
@@ -1961,6 +1964,9 @@ router.delete('/users/:id', requireAuth, requireRole('administrador'), async (re
 
 router.patch('/:resource/:id', requireAuth, async (request, response, next) => {
   const { resource, id } = request.params;
+  if (!request.body || typeof request.body !== 'object' || Array.isArray(request.body)) {
+    return response.status(400).json({ error: 'El cuerpo de la solicitud debe ser un objeto.' });
+  }
   const allowed = {
     leads: { table: 'leads', key: 'id_lead', fields: ['estado', 'nivel_interes', 'id_agente'] },
     visits: { table: 'citas', key: 'id_cita', fields: ['estado', 'fecha_cita', 'motivo'] },
@@ -1975,8 +1981,13 @@ router.patch('/:resource/:id', requireAuth, async (request, response, next) => {
     },
   }[resource];
   if (!allowed) return response.status(404).json({ error: 'Recurso no editable.' });
-  if (!['administrador', 'agente', 'admin'].includes(request.user.rol)) {
+  const isAdmin = ['administrador', 'admin'].includes(request.user.rol);
+  const isStaff = isAdmin || ['agente', 'vendedor'].includes(request.user.rol);
+  if (!isStaff) {
     return response.status(403).json({ error: 'No tienes permisos para modificar este registro.' });
+  }
+  if (resource === 'commissions' && !isAdmin) {
+    return response.status(403).json({ error: 'Solo los administradores pueden actualizar comisiones.' });
   }
   const updates = Object.entries(request.body).filter(([key, value]) => allowed.fields.includes(key) && value !== undefined);
   if (!updates.length) return response.status(400).json({ error: 'No hay cambios válidos.' });
@@ -1987,8 +1998,7 @@ router.patch('/:resource/:id', requireAuth, async (request, response, next) => {
     || (resource === 'visits' && invalidEnumValue('estado', ['Pendiente', 'Confirmada', 'Completada', 'Cancelada']))
     || (resource === 'offers' && invalidEnumValue('estado', ['PENDIENTE', 'ACEPTADA', 'RECHAZADA', 'CANCELADA']))
     || (resource === 'rentals' && invalidEnumValue('estado', ['Activa', 'Finalizada', 'Cancelada']))
-    || (resource === 'commissions' && invalidEnumValue('estado', ['PENDIENTE', 'PAGADA'])
-      && !['administrador', 'admin'].includes(request.user.rol))) {
+    || (resource === 'commissions' && invalidEnumValue('estado', ['PENDIENTE', 'PAGADA']))) {
     return response.status(400).json({ error: 'El estado seleccionado no es válido para este registro.' });
   }
   if (resource === 'visits' && updates.some(([key, value]) => (
