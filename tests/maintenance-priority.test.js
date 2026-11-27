@@ -97,7 +97,7 @@ test('priority grouping honors pagination and combined status and search filters
     maintenancePriorityTab: 'todas',
     recordFilters: { maintenance: { search: '', from: '', to: '' } },
   });
-  vm.runInContext(section('const PAGE_SIZE =', '// Aplica busqueda, categoria'), context);
+  vm.runInContext(section('const PAGE_SIZE =', '// Aplica búsqueda, categoría'), context);
   vm.runInContext("applyRecordFilters(panel, 'maintenance')", context);
   assert.deepEqual(headings.map((item) => item.hidden), [false, true]);
   vm.runInContext("tablePages.maintenance = 4; paginatePanel(panel, 'maintenance')", context);

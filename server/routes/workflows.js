@@ -1108,7 +1108,7 @@ router.post('/contracts', requireAuth, requireRole('agente', 'administrador'), a
   if ((fecha_contrato && !validDate(fecha_contrato))
     || (operation === 'RENTA' && (!validDate(fecha_inicio) || (fecha_fin && !validDate(fecha_fin))
       || (fecha_fin && fecha_fin < fecha_inicio)))) {
-    return response.status(400).json({ error: 'Revisa la fecha del contrato y el periodo de renta.' });
+    return response.status(400).json({ error: 'Revisa la fecha del contrato y el período de renta.' });
   }
   if ((latitud === undefined || latitud === '') !== (longitud === undefined || longitud === '')) {
     return response.status(400).json({ error: 'Captura ambas coordenadas o deja ambas vacías.' });
@@ -1310,7 +1310,7 @@ router.get('/documents/:id/file', requireAuth, requireRole('agente', 'administra
 router.post('/documents', requireAuth, requireRole('agente', 'administrador'), upload.single('archivo'), async (request, response, next) => {
   const { id_propiedad, tipo } = request.body;
   if (!request.file || !id_propiedad || !tipo) {
-    return response.status(400).json({ error: 'Selecciona una propiedad, tipo y archivo.' });
+    return response.status(400).json({ error: 'Selecciona una propiedad, un tipo y un archivo.' });
   }
   try {
     const hash = crypto.createHash('sha256').update(request.file.buffer).digest('hex');
@@ -1729,7 +1729,7 @@ router.post('/offers', requireAuth, requireRole('agente', 'administrador'), asyn
   if (!isPositiveId(id_propiedad) || !isFiniteNumber(monto) || Number(monto) <= 0
     || !['OFERTA', 'CONTRAPROPUESTA'].includes(String(tipo || '').toUpperCase())
     || !isValidOptionalString(notas, 2000)) {
-    return response.status(400).json({ error: 'Selecciona una propiedad, indica un monto mayor a cero, un tipo válido y notas de hasta 2000 caracteres.' });
+    return response.status(400).json({ error: 'Selecciona una propiedad, indica un monto mayor que cero, un tipo válido y notas de hasta 2000 caracteres.' });
   }
   try {
     const result = await pool.query(`
@@ -1748,7 +1748,7 @@ router.post('/sales', requireAuth, requireRole('administrador'), async (request,
   if (!isPositiveId(id_propiedad) || !isPositiveId(id_cliente) || !isPositiveId(id_agente)
     || !isFiniteNumber(precio_venta) || Number(precio_venta) <= 0
     || (fecha_venta && !isValidDateOnly(fecha_venta))) {
-    return response.status(400).json({ error: 'Selecciona propiedad, cliente y agente, captura un precio mayor a cero y una fecha válida.' });
+    return response.status(400).json({ error: 'Selecciona una propiedad, un cliente y un agente; captura un precio mayor que cero y una fecha válida.' });
   }
   const client = await pool.connect();
   try {
@@ -1810,7 +1810,7 @@ router.post('/rentals', requireAuth, requireRole('agente', 'administrador'), asy
     || !isFiniteNumber(renta_mensual) || Number(renta_mensual) <= 0
     || !isValidDateOnly(fecha_inicio)
     || (fecha_fin && (!isValidDateOnly(fecha_fin) || fecha_fin < fecha_inicio))) {
-    return response.status(400).json({ error: 'Selecciona propiedad y cliente, indica una renta mayor a cero y un periodo con fechas válidas.' });
+    return response.status(400).json({ error: 'Selecciona una propiedad y un cliente, indica una renta mayor que cero y un período con fechas válidas.' });
   }
   const client = await pool.connect();
   try {
@@ -1836,7 +1836,7 @@ router.post('/payments', requireAuth, requireRole('agente', 'administrador'), as
   if (!isPositiveId(id_renta) || !isValidDateOnly(periodo)
     || !isFiniteNumber(monto) || Number(monto) <= 0
     || (estado && !['PAGADO', 'PENDIENTE'].includes(String(estado).toUpperCase()))) {
-    return response.status(400).json({ error: 'Selecciona una renta, un periodo válido, un monto mayor a cero y un estado permitido.' });
+    return response.status(400).json({ error: 'Selecciona una renta, un período válido, un monto mayor que cero y un estado permitido.' });
   }
   try {
     const result = await pool.query(`

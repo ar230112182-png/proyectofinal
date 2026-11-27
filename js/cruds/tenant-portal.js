@@ -1,4 +1,4 @@
-// Conserva las secciones de acceso y cuenta, junto con la clave de sesion local.
+// Conserva las secciones de acceso y cuenta, junto con la clave de sesión local.
 const loginForm = document.getElementById('tenant-login');
 const accountSection = document.getElementById('tenant-account');
 const logoutButton = document.getElementById('tenant-logout');
@@ -26,7 +26,7 @@ function formatDate(value) {
   return Number.isNaN(date.getTime()) ? escapeHtml(value) : date.toLocaleDateString('es-MX');
 }
 
-// Agrega autenticacion a las solicitudes y transforma errores del API.
+// Agrega autenticación a las solicitudes y transforma errores del API.
 async function request(url, options = {}) {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
   const token = localStorage.getItem(tokenKey);
@@ -103,7 +103,7 @@ function renderAccount(data) {
       ${reportRows ? `<ul class="tenant-list">${reportRows}</ul>` : '<p class="portal-empty">Aún no has enviado reportes.</p>'}
     </section>
     <section class="tenant-section"><h2>Historial de pagos</h2>
-      ${paymentRows ? `<div class="property-table-wrap"><table class="data-table"><thead><tr><th>Propiedad</th><th>Periodo</th><th>Monto</th><th>Estado</th><th>Fecha de pago</th></tr></thead><tbody>${paymentRows}</tbody></table></div>` : '<p class="portal-empty">Aún no hay pagos registrados.</p>'}
+      ${paymentRows ? `<div class="property-table-wrap"><table class="data-table"><thead><tr><th>Propiedad</th><th>Período</th><th>Monto</th><th>Estado</th><th>Fecha de pago</th></tr></thead><tbody>${paymentRows}</tbody></table></div>` : '<p class="portal-empty">Aún no hay pagos registrados.</p>'}
     </section>
     <section class="tenant-section"><h2>Contratos</h2>
       ${contractRows ? `<p class="tenant-section-intro">El PDF es un formato con los datos registrados; no es una copia firmada.</p><ul class="tenant-list">${contractRows}</ul>` : '<p class="portal-empty">No hay contratos disponibles.</p>'}
@@ -115,7 +115,7 @@ function renderAccount(data) {
   if (rentalSelect) enableSearchableSelect(rentalSelect, 'Renta o propiedad');
 }
 
-// Recupera la cuenta activa o restablece el formulario si la sesion no es valida.
+// Recupera la cuenta activa o restablece el formulario si la sesión no es válida.
 async function loadAccount() {
   try {
     const result = await request('/api/workflows/tenant/me');
@@ -128,13 +128,13 @@ async function loadAccount() {
     loginForm.hidden = false;
     accountSection.hidden = true;
     logoutButton.hidden = true;
-    if (error.message !== 'Se requiere autenticacion.' && !/sesion no es valida/i.test(error.message)) {
+    if (error.message !== 'Se requiere autenticación.' && !/sesión no es válida/i.test(error.message)) {
       document.getElementById('tenant-login-error').textContent = error.message;
     }
   }
 }
 
-// Valida que el acceso corresponda a un inquilino y carga su informacion.
+// Valida que el acceso corresponda a un inquilino y carga su información.
 loginForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   const error = document.getElementById('tenant-login-error');
@@ -153,7 +153,7 @@ loginForm.addEventListener('submit', async (event) => {
   }
 });
 
-// Cierra la sesion local y devuelve la pagina al formulario de acceso.
+// Cierra la sesión local y devuelve la página al formulario de acceso.
 logoutButton.addEventListener('click', () => {
   localStorage.removeItem(tokenKey);
   accountSection.replaceChildren();
@@ -230,5 +230,5 @@ accountSection.addEventListener('click', async (event) => {
   }
 });
 
-// Restaura la cuenta al abrir la pagina cuando existe un token guardado.
+// Restaura la cuenta al abrir la página cuando existe un token guardado.
 if (localStorage.getItem(tokenKey)) loadAccount();

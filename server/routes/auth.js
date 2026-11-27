@@ -11,7 +11,7 @@ router.post('/login', async (request, response, next) => {
 
     if (!correo || !contrasena) {
       return response.status(400).json({
-        error: 'Correo y contrasena son obligatorios.',
+        error: 'El correo electrónico y la contraseña son obligatorios.',
       });
     }
 
@@ -27,13 +27,13 @@ router.post('/login', async (request, response, next) => {
 
     if (!user) {
       return response.status(401).json({
-        error: 'Las credenciales no son validas.',
+        error: 'Las credenciales no son válidas.',
       });
     }
 
     if (user.activo === false) {
       return response.status(403).json({
-        error: 'Esta cuenta esta inactiva. Solicita a un administrador que la active.',
+        error: 'Esta cuenta está inactiva. Solicita a un administrador que la active.',
       });
     }
 
@@ -60,7 +60,7 @@ router.post('/login', async (request, response, next) => {
 
     if (!passwordValid) {
       return response.status(401).json({
-        error: 'Las credenciales no son validas.',
+        error: 'Las credenciales no son válidas.',
       });
     }
 

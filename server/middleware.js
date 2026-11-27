@@ -7,14 +7,14 @@ function requireAuth(request, response, next) {
     : null;
 
   if (!token) {
-    return response.status(401).json({ error: 'Se requiere autenticacion.' });
+    return response.status(401).json({ error: 'Se requiere autenticación.' });
   }
 
   try {
     request.user = jwt.verify(token, process.env.JWT_SECRET);
     return next();
   } catch {
-    return response.status(401).json({ error: 'La sesion no es valida o ha expirado.' });
+    return response.status(401).json({ error: 'La sesión no es válida o ha expirado.' });
   }
 }
 
@@ -26,7 +26,7 @@ function requireRole(...roles) {
       return role;
     };
     if (!roles.map(normalizeRole).includes(normalizeRole(request.user.rol))) {
-      return response.status(403).json({ error: 'No tienes permisos para esta operacion.' });
+      return response.status(403).json({ error: 'No tienes permisos para esta operación.' });
     }
     return next();
   };

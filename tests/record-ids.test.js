@@ -118,7 +118,7 @@ test('purchase filter combines with report search and pagination', () => {
     panel, recordFilters: { reports: { search: 'demo', from: '', to: '' } },
     document: {}, paginatePanel() {}, clientTableTab: 'todos',
   });
-  vm.runInContext(section(main, 'function applyRecordFilters(', '// Aplica busqueda, categoria'), context);
+  vm.runInContext(section(main, 'function applyRecordFilters(', '// Aplica búsqueda, categoría'), context);
   vm.runInContext("applyRecordFilters(panel, 'reports')", context);
   assert.deepEqual(rows.map((row) => row.hidden), [false, true, true]);
   assert.equal(count.textContent, '1 registros de 3');
@@ -148,7 +148,7 @@ test('active clients combine local and global search and retain pagination', () 
     recordFilters: { clients: { search: '', from: '', to: '' } },
     document: { getElementById: () => globalSearch },
   });
-  vm.runInContext(section(main, 'const PAGE_SIZE =', '// Aplica busqueda, categoria'), context);
+  vm.runInContext(section(main, 'const PAGE_SIZE =', '// Aplica búsqueda, categoría'), context);
   vm.runInContext("applyRecordFilters(panel, 'clients')", context);
   assert.deepEqual(rows.map((row) => row.hidden), [false, true, true]);
   assert.equal(count.textContent, '1 registros de 3');
@@ -190,7 +190,7 @@ test('recent properties hide the property ID and span all columns when empty', (
 test('tenant payment history hides the payment ID', () => {
   const accountSection = { querySelector: () => null };
   const context = vm.createContext({ accountSection });
-  vm.runInContext(section(tenant, 'function escapeHtml(', '// Agrega autenticacion'), context);
+  vm.runInContext(section(tenant, 'function escapeHtml(', '// Agrega autenticación'), context);
   vm.runInContext(section(tenant, 'function renderAccount(', '// Recupera la cuenta'), context);
   context.data = {
     client: { nombre: 'Ana', apellido_paterno: 'Ejemplo' },

@@ -1,4 +1,4 @@
-// Conserva las referencias del inventario publico y la propiedad seleccionada.
+// Conserva las referencias del inventario público y la propiedad seleccionada.
 const listingContainer = document.getElementById('portal-properties');
 const statusElement = document.getElementById('portal-status');
 const detailContainer = document.getElementById('property-detail');
@@ -53,7 +53,7 @@ function propertyImage(item, className = '') {
     : `<div class="portal-listing-mark ${className}" aria-hidden="true">${escapeHtml(item.categoria?.slice(0, 1) || 'H')}</div>`;
 }
 
-// Filtra el inventario, pagina resultados y dibuja las tarjetas de propiedades.
+// Filtra el inventario, pagina los resultados y dibuja las tarjetas de propiedades.
 function renderListings() {
   const query = document.getElementById('portal-search').value.trim().toLocaleLowerCase();
   const operation = document.getElementById('portal-operation').value;
@@ -99,13 +99,13 @@ function renderListings() {
   pagination.innerHTML = `<button type="button" class="outline-button" data-portal-page="prev"${currentPage <= 1 ? ' disabled' : ''}>Anterior</button><span>Página ${currentPage} de ${totalPages}</span><button type="button" class="outline-button" data-portal-page="next"${currentPage >= totalPages ? ' disabled' : ''}>Siguiente</button>`;
 }
 
-// Reinicia la paginacion al cambiar los criterios de busqueda.
+// Reinicia la paginación al cambiar los criterios de búsqueda.
 function applyFilters() {
   currentPage = 1;
   renderListings();
 }
 
-// Construye las opciones de categoria a partir del inventario recibido.
+// Construye las opciones de categoría a partir del inventario recibido.
 function populateCategories() {
   const categorySelect = document.getElementById('portal-category');
   const categories = [...new Set(listings.map((item) => item.categoria).filter(Boolean))]
@@ -114,7 +114,7 @@ function populateCategories() {
     .map((category) => `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`).join('');
 }
 
-// Solicita todas las paginas del inventario publico y actualiza la lista.
+// Solicita todas las páginas del inventario público y actualiza la lista.
 async function loadListings() {
   statusElement.textContent = 'Cargando inventario…';
   try {
@@ -137,7 +137,7 @@ async function loadListings() {
   }
 }
 
-// Presenta informacion, ubicacion y contacto para una propiedad individual.
+// Presenta información, ubicación y contacto para una propiedad individual.
 function renderPropertyDetail(item) {
   const operation = String(item.tipo_operacion).toUpperCase();
   const mapUrl = Number.isFinite(Number(item.latitud)) && Number.isFinite(Number(item.longitud))
@@ -169,7 +169,7 @@ function renderPropertyDetail(item) {
     </article>`;
 }
 
-// Consulta el detalle publico por identificador y comunica errores al visitante.
+// Consulta el detalle público por identificador y comunica errores al visitante.
 async function loadPropertyDetail(id) {
   listingContainer.hidden = true;
   document.querySelector('.portal-search').hidden = true;
@@ -194,7 +194,7 @@ async function loadPropertyDetail(id) {
   document.getElementById(id).addEventListener('change', applyFilters);
 });
 
-// Atiende paginacion y seleccion de propiedad para el formulario de contacto.
+// Atiende paginación y selección de propiedad para el formulario de contacto.
 document.addEventListener('click', (event) => {
   const paginationButton = event.target.closest('[data-portal-page]');
   if (paginationButton) {
@@ -208,7 +208,7 @@ document.addEventListener('click', (event) => {
   leadForm.elements.id_propiedad.value = contactButton.dataset.contactProperty;
 });
 
-// Registra solicitudes publicas y presenta el resultado del envio.
+// Registra solicitudes públicas y presenta el resultado del envío.
 leadForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   const result = document.getElementById('lead-result');

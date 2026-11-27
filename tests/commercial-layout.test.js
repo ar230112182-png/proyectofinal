@@ -84,7 +84,7 @@ test('rental tables keep search, dates, status and pagination independent', () =
     },
     paginatePanel(panel, resource, reset) { panel.paginated = [resource, reset]; },
   });
-  vm.runInContext(section('function applyRecordFilters(', '// Aplica busqueda'), context);
+  vm.runInContext(section('function applyRecordFilters(', '// Aplica búsqueda'), context);
   vm.runInContext("applyRecordFilters(commercial, 'rentals'); applyRecordFilters(collections, 'rentals')", context);
   assert.deepEqual(commercial.rows.map((row) => row.hidden), [true, true, false]);
   assert.deepEqual(collections.rows.map((row) => row.hidden), [true, false, true]);

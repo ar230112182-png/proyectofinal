@@ -1,4 +1,4 @@
-// Centraliza las peticiones HTTP, la sesion y las operaciones comunes del API.
+// Centraliza las peticiones HTTP, la sesión y las operaciones comunes del API.
 const api = {
   token: localStorage.getItem('habita_token'),
   async request(url, options = {}) {
@@ -71,10 +71,10 @@ const api = {
   },
 };
 
-// Expone el cliente para otras funciones cargadas en la pagina.
+// Expone el cliente para otras funciones cargadas en la página.
 window.habitaApi = api;
 
-// Comprueba el rol actual para mostrar acciones exclusivas de administracion.
+// Comprueba el rol actual para mostrar acciones exclusivas de administración.
 function isCurrentUserAdmin() {
   try {
     const user = JSON.parse(localStorage.getItem('habita_user') || '{}');
@@ -151,7 +151,7 @@ const tableConfig = {
   sales: { title: 'Ventas cerradas', columns: [['propiedad', 'Propiedad'], ['cliente', 'Cliente'], ['precio_venta', 'Precio'], ['fecha_venta', 'Fecha']] },
   commissions: { title: 'Comisiones', columns: [['vendedor', 'Vendedor'], ['cliente', 'Cliente'], ['propiedad', 'Propiedad'], ['porcentaje_agencia', '% comisión'], ['monto_operacion', 'Valor propiedad'], ['monto_total', 'Comisión'], ['estado', 'Pago'], ['es_demo', 'Registro'], ['creado_en', 'Fecha']], actions: ['status'] },
   rentals: { title: 'Contratos de renta', columns: [['propiedad', 'Propiedad'], ['cliente', 'Cliente'], ['renta_mensual', 'Renta mensual'], ['fecha_inicio', 'Inicio'], ['fecha_fin', 'Fin'], ['estado', 'Estado']], actions: ['status'] },
-  payments: { title: 'Cobros de renta', columns: [['propiedad', 'Propiedad'], ['cliente', 'Cliente'], ['periodo', 'Periodo'], ['monto', 'Monto'], ['estado', 'Estado'], ['pagado_en', 'Pagado']] , actions: ['status', 'receipt'] },
+  payments: { title: 'Cobros de renta', columns: [['propiedad', 'Propiedad'], ['cliente', 'Cliente'], ['periodo', 'Período'], ['monto', 'Monto'], ['estado', 'Estado'], ['pagado_en', 'Pagado']] , actions: ['status', 'receipt'] },
   maintenance: { title: 'Solicitudes de mantenimiento', columns: [['propiedad', 'Propiedad'], ['titulo', 'Solicitud'], ['descripcion', 'Descripción'], ['solicitante', 'Solicitante'], ['prioridad', 'Prioridad'], ['estado', 'Estado'], ['asignado', 'Responsable'], ['costo_estimado', 'Costo estimado'], ['costo_final', 'Costo final'], ['fecha_limite', 'Fecha límite']], actions: ['status'] },
   contracts: { title: 'Contratos registrados', columns: [['tipo_operacion', 'Operación'], ['cliente', 'Cliente'], ['vendedor', 'Vendedor'], ['propiedad', 'Lote'], ['precio_total', 'Precio'], ['superficie_m2', 'Superficie m²'], ['fecha_contrato', 'Fecha']], actions: ['document', 'map'] },
   sellers: { title: 'Vendedores', columns: [['nombre', 'Nombre'], ['apellido_paterno', 'Apellido'], ['correo', 'Correo'], ['telefono', 'Teléfono'], ['rol', 'Rol'], ['activo', 'Estado'], ['comision_mes', 'Comisión del mes']], actions: ['edit', 'status', 'delete'] },
@@ -238,7 +238,7 @@ const forms = {
     ['', 'Costo y plazo', 'section'],
     ['costo_estimado', 'Costo estimado', 'number'], ['fecha_limite', 'Fecha límite', 'date'],
   ] },
-  payment: { title: 'Registrar cobro', resource: 'payments', fields: [['id_renta', 'Contrato de renta', 'options', true, 'rentals'], ['periodo', 'Periodo de pago', 'date', true], ['monto', 'Monto recibido', 'number', true], ['estado', 'Estado del pago', 'select', true, ['PAGADO', 'PENDIENTE']]] },
+  payment: { title: 'Registrar cobro', resource: 'payments', fields: [['id_renta', 'Contrato de renta', 'options', true, 'rentals'], ['periodo', 'Período de pago', 'date', true], ['monto', 'Monto recibido', 'number', true], ['estado', 'Estado del pago', 'select', true, ['PAGADO', 'PENDIENTE']]] },
   seller: { title: 'Agregar vendedor', resource: 'users', fields: [
     ['', 'Datos personales', 'section'],
     ['nombre', 'Nombre', 'text', true], ['apellido_paterno', 'Apellido paterno', 'text', true], ['apellido_materno', 'Apellido materno', 'text'],
@@ -381,7 +381,7 @@ function hideLogin() {
   document.getElementById('auth-overlay').hidden = true;
 }
 
-// Muestra mensajes temporales de exito o error en la interfaz.
+// Muestra mensajes temporales de éxito o error en la interfaz.
 function showToast(message, isError = false) {
   const element = document.getElementById('toast');
   element.textContent = message;
@@ -402,7 +402,7 @@ function ensureDialog() {
   return dialog;
 }
 
-// Crea un control HTML segun la definicion del campo del formulario.
+// Crea un control HTML según la definición del campo del formulario.
 function renderField(field) {
   const [name, label, type, required, options, searchable = true] = field;
   let input;
@@ -586,7 +586,7 @@ function validateWorkflowForm(form) {
     const start = value('fecha_inicio');
     const end = value('fecha_fin');
     if (!validDate(start) || !validDate(end) || (start && end && end < start)) {
-      return invalid('Revisa el periodo: la fecha de término debe ser igual o posterior al inicio.');
+      return invalid('Revisa el período: la fecha de término debe ser igual o posterior al inicio.');
     }
   }
   if (kind === 'contract') {
@@ -594,7 +594,7 @@ function validateWorkflowForm(form) {
     const start = value('fecha_inicio');
     const end = value('fecha_fin');
     if (isRental && (!validDate(start) || !validDate(end) || (start && end && end < start))) {
-      return invalid('Revisa el periodo de renta: la fecha de término debe ser igual o posterior al inicio.');
+      return invalid('Revisa el período de renta: la fecha de término debe ser igual o posterior al inicio.');
     }
     if (!isRental && (Boolean(value('latitud')) !== Boolean(value('longitud')))) {
       return invalid('Captura latitud y longitud juntas.');
@@ -701,7 +701,7 @@ function actionButtons(resource, record) {
   }).join(' ');
 }
 
-// Conecta las acciones de administracion de usuarios y vendedores.
+// Conecta las acciones de administración de usuarios y vendedores.
 function bindUserRecordActions(panel, resource) {
   if (!['sellers', 'users'].includes(resource)) return;
   panel.querySelectorAll('[data-record-action]').forEach((button) => {
@@ -803,7 +803,7 @@ function syncMaintenanceTabs() {
   if (panel) panel.setAttribute('aria-labelledby', `maintenance-tab-${maintenancePriorityTab}`);
 }
 
-// Renderiza tablas, filtros, acciones y contenido adicional de cada modulo.
+// Renderiza tablas, filtros, acciones y contenido adicional de cada módulo.
 function renderRecords(resource, viewId, data = []) {
   const view = document.getElementById(viewId);
   const config = tableConfig[resource];
@@ -901,16 +901,16 @@ function renderRecords(resource, viewId, data = []) {
   updateMetrics();
 }
 
-// Normaliza campos de un registro para la busqueda dentro de una tabla.
+// Normaliza campos de un registro para la búsqueda dentro de una tabla.
 function getRecordSearchText(record) {
   return Object.values(record).filter((value) => value !== null && value !== undefined).join(' ').toLocaleLowerCase();
 }
 
-// Divide las filas visibles en paginas y conserva el numero por recurso.
+// Divide las filas visibles en páginas y conserva el número por recurso.
 const PAGE_SIZE = 6;
 const tablePages = {};
 
-// Recorta filas segun la pagina seleccionada y sincroniza los controles.
+// Recorta filas según la página seleccionada y sincroniza los controles.
 function paginatePanel(panel, resource, resetPage = false) {
   if (!panel) return;
   const pageKey = panel.dataset?.filterKey || resource;
@@ -937,7 +937,7 @@ function paginatePanel(panel, resource, resetPage = false) {
   nav.innerHTML = `<button type="button" class="text-button" data-page-nav="prev"${page <= 1 ? ' disabled' : ''}>Anterior</button><span>Página ${page} de ${totalPages} · ${rows.length} registros</span><button type="button" class="text-button" data-page-nav="next"${page >= totalPages ? ' disabled' : ''}>Siguiente</button>`;
 }
 
-// Aplica texto, fechas y estado al conjunto de registros del modulo.
+// Aplica texto, fechas y estado al conjunto de registros del módulo.
 function applyRecordFilters(panel, resource) {
   if (!panel) return;
   const filterKey = panel.dataset?.filterKey || resource;
@@ -971,7 +971,7 @@ function applyRecordFilters(panel, resource) {
   paginatePanel(panel, resource, true);
 }
 
-// Aplica busqueda, categoria y fecha al inventario de propiedades.
+// Aplica búsqueda, categoría y fecha al inventario de propiedades.
 function applyPropertyFilters(panel) {
   if (!panel) return;
   const search = panel.querySelector('[data-property-search]');
@@ -1004,7 +1004,7 @@ function getUserSearchText(user) {
   return [user.nombre, user.apellido_paterno, user.apellido_materno].filter(Boolean).join(' ');
 }
 
-// Actualiza la lista de vendedores segun el texto de busqueda.
+// Actualiza la lista de vendedores según el texto de búsqueda.
 function applyUserSearch(input) {
   if (!input) return;
   const panel = input.closest('.persisted-panel');
@@ -1256,7 +1256,7 @@ function moveVisitCalendar(amount) {
     : new Date(date.getFullYear(), date.getMonth(), date.getDate() + amount * 7, 12);
 }
 
-// Presenta las citas agrupadas por dia en el periodo seleccionado.
+// Presenta las citas agrupadas por día en el período seleccionado.
 function renderVisitCalendar(panel, visits) {
   if (!panel) return;
   const monthly = visitCalendarState.mode === 'month';
@@ -1302,7 +1302,7 @@ function renderVisitCalendar(panel, visits) {
     <div class="visit-calendar${monthly ? ' visit-calendar-month' : ''}">${weekdays}${days}</div>`;
 }
 
-// Filtra filas con el control desplegable del modulo activo.
+// Filtra filas con el control desplegable del módulo activo.
 function applyRecordFilter(select) {
   const value = select.value.toLocaleLowerCase();
   const panel = select.closest('.persisted-panel');
@@ -1418,7 +1418,7 @@ function renderDashboardProperties(properties) {
 
 let lastSummaryData = null;
 
-// Actualiza indicadores generales y cifras resumidas de cada modulo.
+// Actualiza indicadores generales y cifras resumidas de cada módulo.
 function updateMetrics(summary = lastSummaryData) {
   if (summary) lastSummaryData = summary;
   const currentSummary = summary || lastSummaryData || {};
@@ -1599,7 +1599,7 @@ async function loadNotifications() {
 
 let notificationPollingTimer;
 
-// Refresca notificaciones en intervalos mientras exista una sesion activa.
+// Refresca notificaciones en intervalos mientras exista una sesión activa.
 function startNotificationPolling() {
   if (notificationPollingTimer) return;
   notificationPollingTimer = window.setInterval(() => {
@@ -1629,7 +1629,7 @@ async function submitClientActivity(form) {
   }
 }
 
-// Muestra los eventos recientes del sistema con una descripcion amigable.
+// Muestra los eventos recientes del sistema con una descripción amigable.
 function renderActivity(activity) {
   const list = document.querySelector('#dashboard-view .activity-list');
   if (!list) return;
@@ -1783,7 +1783,7 @@ async function loadWorkspace() {
     renderCollectionsOverview();
   } catch (error) {
     console.error(error);
-    if (/sesion|autenticacion/i.test(error.message)) showLogin();
+    if (/sesi[oó]n|autenticaci[oó]n/i.test(error.message)) showLogin();
     else showToast(error.message, true);
   } finally {
     setWorkspaceLoading(false);
@@ -1992,7 +1992,7 @@ async function downloadPdfReport(resource = 'reports', selection = null) {
     doc.setTextColor(96, 115, 113);
     doc.text(`Folio: ${folio}`, pw - 75, 17);
     doc.text(`Emisión: ${now.toLocaleDateString('es-MX')} ${now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}`, pw - 75, 21);
-    doc.text(`Periodo: ${periodoLabel}`, pw - 75, 25);
+    doc.text(`Período: ${periodoLabel}`, pw - 75, 25);
 
     // 4. Métricas e indicadores del reporte
     const totalCount = data.length;
@@ -2263,7 +2263,7 @@ function downloadDataCsv(filename, data) {
   URL.revokeObjectURL(link.href);
 }
 
-// Descarga un archivo legal usando la sesion autenticada.
+// Descarga un archivo legal usando la sesión autenticada.
 async function downloadDocument(id) {
   const response = await fetch(`/api/workflows/documents/${id}/file`, {
     headers: { Authorization: `Bearer ${api.token}` },
@@ -2286,7 +2286,7 @@ async function downloadDocument(id) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-// Construye una vista imprimible con la informacion registrada del contrato.
+// Construye una vista imprimible con la información registrada del contrato.
 function contractDocument(record) {
   const operation = record.tipo_operacion === 'VENTA' ? 'compraventa' : 'arrendamiento';
   const amount = record.tipo_operacion === 'RENTA' ? record.renta_mensual : record.precio_total;
@@ -2354,7 +2354,7 @@ function downloadPaymentReceipt(id) {
       <div><dt>Cliente</dt><dd>${escapeHtml(payment.cliente)}</dd></div>
       <div><dt>Correo</dt><dd>${escapeHtml(payment.correo)}</dd></div>
       <div><dt>Propiedad</dt><dd>${escapeHtml(payment.propiedad)}</dd></div>
-      <div><dt>Periodo cubierto</dt><dd>${escapeHtml(formatAlertDate(payment.periodo))}</dd></div>
+      <div><dt>Período cubierto</dt><dd>${escapeHtml(formatAlertDate(payment.periodo))}</dd></div>
       <div><dt>Fecha de pago</dt><dd>${escapeHtml(formatAlertDate(payment.pagado_en))}</dd></div>
       <div><dt>Estado</dt><dd>Pagado</dd></div>
     </dl><p class="amount">${escapeHtml(formatMoney(payment.monto))}</p>
@@ -2369,7 +2369,7 @@ function downloadPaymentReceipt(id) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-// Abre formularios de estado y edicion para registros existentes.
+// Abre formularios de estado y edición para registros existentes.
 function openStatusForm(resource, id) {
   const options = {
     leads: ['NUEVO', 'CONTACTADO', 'CALIFICADO', 'CONVERTIDO', 'DESCARTADO'],
@@ -2407,7 +2407,7 @@ function openStatusForm(resource, id) {
   dialog.showModal();
 }
 
-// Abre el formulario de edicion con los valores actuales de una propiedad.
+// Abre el formulario de edición con los valores actuales de una propiedad.
 function openPropertyEdit(id) {
   const record = records.properties.find((property) => String(property.id_propiedad) === String(id));
   if (!record) return;
@@ -2469,7 +2469,7 @@ function openSellerEdit(id) {
   dialog.showModal();
 }
 
-// Abre el formulario de edicion de una cuenta de usuario.
+// Abre el formulario de edición de una cuenta de usuario.
 function openUserEdit(id) {
   const record = records.users.find((user) => String(user.id_usuario) === String(id));
   if (!record) {
@@ -2658,7 +2658,7 @@ async function openClientHistory(id) {
   }
 }
 
-// Permite al administrador definir la contrasena inicial del portal de inquilinos.
+// Permite al administrador definir la contraseña inicial del portal de inquilinos.
 function openClientCredentials(id) {
   const dialog = ensureDialog();
   const form = dialog.querySelector('#workflow-form');
@@ -2672,7 +2672,7 @@ function openClientCredentials(id) {
   dialog.showModal();
 }
 
-// Valida y envia los formularios del sistema segun el tipo de operacion.
+// Valida y envía los formularios del sistema según el tipo de operación.
 async function submitDialog(form) {
   const dialog = form.closest('dialog');
   const kind = form.dataset.kind;
@@ -2795,7 +2795,7 @@ async function handlePageAction(button) {
   }
 }
 
-// Gestiona el inicio de sesion y los eventos delegados de las tablas y ventanas.
+// Gestiona el inicio de sesión y los eventos delegados de las tablas y ventanas.
 const loginForm = document.getElementById('login-form');
 loginForm?.addEventListener('submit', async (event) => {
   event.preventDefault();
